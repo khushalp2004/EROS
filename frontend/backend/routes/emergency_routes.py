@@ -1,7 +1,6 @@
 from flask import Blueprint, jsonify, request
 from models import Emergency, Unit, db
 from datetime import datetime
-from routes.notification_routes import create_emergency_notification, create_system_notification
 
 emergency_bp = Blueprint('emergency_bp', __name__)
 
@@ -39,11 +38,6 @@ def add_emergency():
     )
     db.session.add(new_emergency)
     db.session.commit()
-
-    # Create notification for new emergency
-    create_emergency_notification(new_emergency, 'created')
-    create_system_notification(f"New {emergency_type} emergency reported at location ({latitude}, {longitude})", 'info')
-
     return jsonify({'message': 'Emergency added', 'request_id': new_emergency.request_id})
 
 # Assign unit and complete emergency routes can go here

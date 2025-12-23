@@ -32,40 +32,6 @@ function MapAutoCenter({ center }) {
   return null;
 }
 
-function AnimatedPolyline({ positions, progress = 1, color = "#0080ff", originalPositions = [] }) {
-  // Calculate how much of the polyline to show based on progress
-  const visiblePositions = positions.slice(0, Math.max(2, Math.floor(positions.length * progress)));
-  
-  return (
-    <>
-      {/* Draw the full route as a faint background */}
-      {originalPositions.length > 1 && (
-        <Polyline
-          positions={originalPositions}
-          pathOptions={{ 
-            color: color, 
-            weight: 2, 
-            opacity: 0.2, 
-            dashArray: "3 3" 
-          }}
-        />
-      )}
-      {/* Draw the animated progress */}
-      {visiblePositions.length > 1 && (
-        <Polyline
-          positions={visiblePositions}
-          pathOptions={{ 
-            color: color, 
-            weight: 6, 
-            opacity: 0.8,
-            className: "animated-route"
-          }}
-        />
-      )}
-    </>
-  );
-}
-
 function MapView({ markers, center, polylines = [] }) {
   const defaultCenter = [19.076, 72.8777];
   const mapCenter = center || (markers.length === 1
@@ -101,12 +67,10 @@ function MapView({ markers, center, polylines = [] }) {
         </Marker>
       ))}
       {polylines.map((pl, idx) => (
-        <AnimatedPolyline
+        <Polyline
           key={idx}
           positions={pl.positions}
-          progress={pl.progress || 1}
-          color={pl.color || "#0080ff"}
-          originalPositions={pl.originalPositions}
+          pathOptions={{ color: pl.color || "blue", weight: 4, opacity: 0.6, dashArray: pl.dash ? "6 6" : null }}
         />
       ))}
     </MapContainer>

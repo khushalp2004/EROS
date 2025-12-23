@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import api from "../api";
-import RealtimeMapView from "../components/RealtimeMapView";
+import MapView from "../components/MapView";
 import EmergencyList from "../components/EmergencyList";
 
 function Dashboard() {
@@ -146,7 +146,7 @@ function Dashboard() {
 
   // Compute simulated positions for assigned emergencies (use tick to re-render)
   const simulatedUnitMarkers = useMemo(() => {
-    const markers = Object.entries(simTracks).map(([reqId, track]) => {
+    return Object.entries(simTracks).map(([reqId, track]) => {
       const now = Date.now();
       const frac = Math.min(1, Math.max(0, (now - track.t0) / track.durationMs));
       const route = routeCache[reqId]?.coords;
@@ -166,21 +166,13 @@ function Dashboard() {
         type: "Unit (simulated)",
         status: "ENROUTE",
         isSimulated: true,
-        progress: frac
       };
     });
-    
-    // Debug logging
-    if (markers.length > 0) {
-      console.log('🐄 Animated unit markers:', markers);
-    }
-    
-    return markers;
   }, [simTracks, routeCache, tick]);
 
   // Build animated polylines with progress tracking
   const simulatedPolylines = useMemo(() => {
-    const polylines = Object.entries(simTracks).map(([reqId, track]) => {
+    return Object.entries(simTracks).map(([reqId, track]) => {
       const route = routeCache[reqId]?.coords;
       const positions = route && route.length > 1 ? route : [track.start, track.end];
       
@@ -194,17 +186,8 @@ function Dashboard() {
         originalPositions: positions, // For the faint background route
         progress, // Progress from 0 to 1 for animation
         color: "#0080ff",
-        startTime: track.t0,
-        duration: track.durationMs
       };
     });
-    
-    // Debug logging
-    if (polylines.length > 0) {
-      console.log('🛣️ Animated polylines:', polylines);
-    }
-    
-    return polylines;
   }, [simTracks, routeCache, tick]);
 
   const handleDispatch = async (emergency) => {
@@ -297,16 +280,6 @@ function Dashboard() {
       <div style={{ marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ color: "#5f6b7a" }}>
           {loading ? "Refreshing..." : "Live overview with animated routes"}
-          {simulatedPolylines.length > 0 && (
-            <span style={{ 
-              marginLeft: "10px", 
-              color: "#00aa00", 
-              fontWeight: "bold",
-              animation: "pulse 1s infinite"
-            }}>
-              🏃 {simulatedPolylines.length} Active Animations
-            </span>
-          )}
         </div>
         <button
           onClick={fetchData}
@@ -325,19 +298,15 @@ function Dashboard() {
       <div style={{ display: "flex", gap: "16px", alignItems: "stretch" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...cardStyle, height: "100%" }}>
-            <h3 style={sectionTitleStyle}>Units (Real-time Tracking)</h3>
-            <RealtimeMapView 
-              markers={units.map((u) => ({ ...u, type: u.service_type }))} 
-              showRealtimeData={true}
-              animateRoutes={false}
-            />
+            <h3 style={sectionTitleStyle}>Units</h3>
+            <MapView markers={units.map((u) => ({ ...u, type: u.service_type }))} />
           </div>
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...cardStyle, height: "100%" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-              <h3 style={sectionTitleStyle}>Emergencies & Routes (Live Animation)</h3>
+              <h3 style={sectionTitleStyle}>Emergencies</h3>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px" }}>
                 <label style={{ fontWeight: 600 }}>Status:</label>
                 <select
@@ -356,7 +325,7 @@ function Dashboard() {
                 </span>
               </div>
             </div>
-            <RealtimeMapView
+            <MapView
               markers={
                 activeSelection
                   ? [{ ...activeSelection, type: activeSelection.emergency_type }]
@@ -367,8 +336,6 @@ function Dashboard() {
                   ? simulatedPolylines.filter((p) => p.request_id === activeSelection.request_id)
                   : simulatedPolylines
               }
-              showRealtimeData={true}
-              animateRoutes={true}
             />
           </div>
         </div>
