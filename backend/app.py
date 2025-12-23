@@ -8,7 +8,12 @@ from routes.emergency_routes import emergency_bp
 
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)  # ✅ This allows requests from React frontend
+# Allow local frontend (CRA) and direct IP access; adjust origins if needed.
+CORS(
+    app,
+    resources={r"/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}},
+    supports_credentials=True,
+)
 app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = SQLALCHEMY_TRACK_MODIFICATIONS
 

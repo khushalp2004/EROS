@@ -10,3 +10,6 @@ SQLALCHEMY_DATABASE_URI = f'postgresql://postgres:khushalpatil29@db.pmiuqgtnztqn
 
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+# Base URL for OSRM routing (change to your own OSRM host if self-hosted)
+OSRM_BASE_URL = "http://router.project-osrm.org"
+

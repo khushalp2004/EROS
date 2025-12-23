@@ -1,5 +1,5 @@
 import React from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -14,18 +14,53 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-function MapView({ markers }) {
+const ambulanceIcon = L.divIcon({
+  className: "ambulance-icon",
+  html: '<div style="font-size:20px; line-height:20px;">🚑</div>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+const defaultIcon = new L.Icon.Default();
+
+function MapView({ markers, center, polylines = [] }) {
+  const defaultCenter = [19.076, 72.8777];
+  const mapCenter = center || (markers.length === 1
+    ? [markers[0].latitude, markers[0].longitude]
+    : defaultCenter);
+  const mapZoom = markers.length === 1 ? 14 : 12;
+
+  if (!markers || markers.length === 0) {
+    return <p style={{ marginTop: "10px" }}>No locations to display.</p>;
+  }
+
   return (
-    <MapContainer center={[19.076, 72.8777]} zoom={12} style={{ height: "500px" }}>
+    <MapContainer
+      key={`${mapCenter[0]}-${mapCenter[1]}-${mapZoom}-${markers.length}`}
+      center={mapCenter}
+      zoom={mapZoom}
+      style={{ height: "500px" }}
+    >
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {markers.map((m, i) => (
-        <Marker key={i} position={[m.latitude, m.longitude]}>
+        <Marker
+          key={i}
+          position={[m.latitude, m.longitude]}
+          icon={m.isSimulated ? ambulanceIcon : defaultIcon}
+          zIndexOffset={m.isSimulated ? 500 : 0}
+        >
           <Popup>
             {m.type} - Status: {m.status}
           </Popup>
         </Marker>
+      ))}
+      {polylines.map((pl, idx) => (
+        <Polyline
+          key={idx}
+          positions={pl.positions}
+          pathOptions={{ color: pl.color || "blue", weight: 4, opacity: 0.6, dashArray: pl.dash ? "6 6" : null }}
+        />
       ))}
     </MapContainer>
   );
