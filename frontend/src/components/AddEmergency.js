@@ -5,6 +5,7 @@ import {
   Marker,
   Popup,
   useMapEvents,
+  useMap,
 } from "react-leaflet";
 import L from "leaflet";
 import api from "../api";
@@ -19,6 +20,16 @@ L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
 });
+
+function MapAutoCenter({ center }) {
+  const map = useMap();
+  React.useEffect(() => {
+    if (center) {
+      map.setView(center, map.getZoom(), { animate: true });
+    }
+  }, [center, map]);
+  return null;
+}
 
 function LocationPicker({ value, onChange }) {
   useMapEvents({
@@ -40,6 +51,11 @@ function AddEmergency() {
   const [position, setPosition] = useState(null); // [lat, lng]
   const [message, setMessage] = useState("");
   const [locating, setLocating] = useState(false);
+
+  // Calculate map center: use selected position if available, otherwise use default
+  const defaultCenter = [19.076, 72.8777]; // Mumbai coordinates
+  const mapCenter = position || defaultCenter;
+  const mapZoom = 12;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -114,10 +130,11 @@ function AddEmergency() {
             {locating ? "Locating..." : "Use my location"}
           </button>
           <MapContainer
-            center={[19.076, 72.8777]}
-            zoom={12}
+            center={mapCenter}
+            zoom={mapZoom}
             style={{ height: "400px" }}
           >
+            <MapAutoCenter center={position} />
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <LocationPicker value={position} onChange={setPosition} />
           </MapContainer>
