@@ -7,7 +7,7 @@ from flask import request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from models import Unit, Emergency
 
-# Initialize SocketIO
+# Initialize SocketIO - This will be the shared instance
 socketio = SocketIO()
 
 # In-memory unit location tracking
@@ -182,7 +182,11 @@ simulation_running = False
 def init_websocket(app):
     """Initialize WebSocket with the Flask app"""
     global simulation_thread, simulation_running
-    socketio.init_app(app, cors_allowed_origins="*")
+    socketio.init_app(app, 
+        cors_allowed_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        cors_credentials=False,
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"]
+    )
     
     # Start simulation thread only once
     if not simulation_running:

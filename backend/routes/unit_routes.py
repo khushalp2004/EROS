@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from models import Unit
 
 unit_bp = Blueprint('unit_bp', __name__)
@@ -16,4 +16,5 @@ def get_units():
             'status': u.status,
             'last_updated': u.last_updated
         })
+    
     return jsonify(output)

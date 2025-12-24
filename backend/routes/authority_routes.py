@@ -209,6 +209,7 @@ def get_units():
             "longitude": u.longitude,
             "last_updated": u.last_updated
         })
+    
     return jsonify(data)
 
 # -------------------------
@@ -229,4 +230,5 @@ def get_emergencies():
             "assigned_unit": e.assigned_unit,
             "created_at": e.created_at
         })
+    
     return jsonify(data)

@@ -6,6 +6,7 @@ import NotificationBadge from "./components/NotificationBadge";
 import NotificationPanel from "./components/NotificationPanel";
 import AddEmergency from "./components/AddEmergency";
 import Dashboard from "./pages/Dashboard";
+import UnitsTracking from "./pages/UnitsTracking";
 
 // Make toast functions globally available
 window.showToast = (toast) => toastManager.addToast(toast);
@@ -63,6 +64,21 @@ function App() {
               >
                 Dashboard
               </Link>
+              <Link 
+                to="/units-tracking" 
+                style={{
+                  textDecoration: 'none',
+                  color: '#374151',
+                  fontWeight: '500',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                Units Tracking
+              </Link>
             </nav>
             
             {/* Notification Badge */}
@@ -77,6 +93,7 @@ function App() {
             <Routes>
               <Route path="/" element={<AddEmergency />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/units-tracking" element={<UnitsTracking />} />
             </Routes>
           </div>
         </div>

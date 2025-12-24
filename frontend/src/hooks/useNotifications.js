@@ -21,7 +21,7 @@ export const NotificationProvider = ({ children, userId = null }) => {
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const newSocket = io('http://localhost:5000');
+    const newSocket = io('http://localhost:5001');
     
     newSocket.on('connect', () => {
       setIsConnected(true);

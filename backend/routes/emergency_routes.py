@@ -20,6 +20,7 @@ def get_emergencies():
             'assigned_unit': e.assigned_unit,
             'created_at': e.created_at
         })
+    
     return jsonify(output)
 
 @emergency_bp.route('/emergencies', methods=['POST'])

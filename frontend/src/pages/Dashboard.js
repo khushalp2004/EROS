@@ -233,7 +233,84 @@ function Dashboard() {
     }
   };
 
-  // Choose markers for the map, showing simulated unit if relevant
+  // Create routes for units responding to emergencies (for units map)
+  const unitRoutes = useMemo(() => {
+    const routes = [];
+    emergencies
+      .filter((e) => e.status === "ASSIGNED" && e.assigned_unit)
+      .forEach((e) => {
+        const unit = units.find((u) => u.unit_id === e.assigned_unit);
+        if (unit) {
+          const track = simTracks[e.request_id];
+          if (track) {
+            const route = routeCache[e.request_id]?.coords;
+            const positions = route && route.length > 1 ? route : [track.start, track.end];
+            
+            // Calculate current progress for animation
+            const now = Date.now();
+            const progress = Math.min(1, Math.max(0, (now - track.t0) / track.durationMs));
+            
+            routes.push({
+              unit_id: unit.unit_id,
+              request_id: e.request_id,
+              positions,
+              originalPositions: positions,
+              progress,
+              color: unit.service_type === 'AMBULANCE' ? '#dc3545' : 
+                     unit.service_type === 'POLICE' ? '#007bff' : '#fd7e14',
+              startTime: track.t0,
+              duration: track.durationMs
+            });
+          }
+        }
+      });
+    return routes;
+  }, [emergencies, units, simTracks, routeCache, tick]);
+
+  // Enhanced units map markers with simulated tracking
+  const unitsMapMarkers = useMemo(() => {
+    const enhancedUnits = units.map(unit => ({
+      ...unit,
+      isRealtime: true
+    }));
+
+    // Add simulated units for those enroute
+    const simulatedUnits = emergencies
+      .filter(e => e.status === "ASSIGNED" && e.assigned_unit)
+      .map(e => {
+        const track = simTracks[e.request_id];
+        if (!track) return null;
+        
+        const now = Date.now();
+        const frac = Math.min(1, Math.max(0, (now - track.t0) / track.durationMs));
+        const route = routeCache[e.request_id]?.coords;
+        let lat, lng;
+        
+        if (route && route.length > 1) {
+          const pos = interpolatePolyline(route, frac);
+          lat = pos[0];
+          lng = pos[1];
+        } else {
+          lat = track.start[0] + (track.end[0] - track.start[0]) * frac;
+          lng = track.start[1] + (track.end[1] - track.start[1]) * frac;
+        }
+        
+        return {
+          ...units.find(u => u.unit_id === e.assigned_unit),
+          latitude: lat,
+          longitude: lng,
+          status: "ENROUTE",
+          isSimulated: true,
+          assigned_emergency: e.request_id,
+          progress: frac
+        };
+      })
+      .filter(Boolean);
+
+    return [...enhancedUnits, ...simulatedUnits];
+  }, [units, emergencies, simTracks, routeCache, tick]);
+
+  // Choose markers for the emergencies map, showing simulated unit if relevant
   const mapMarkers = (() => {
     if (activeSelection) {
       const simForSelection = simulatedUnitMarkers.filter(
@@ -323,16 +400,17 @@ function Dashboard() {
       </div>
 
       <div style={{ display: "flex", gap: "16px", alignItems: "stretch" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        {/* <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...cardStyle, height: "100%" }}>
-            <h3 style={sectionTitleStyle}>Units (Real-time Tracking)</h3>
+            <h3 style={sectionTitleStyle}>Units (Real-time Tracking with Routes)</h3>
             <RealtimeMapView 
-              markers={units.map((u) => ({ ...u, type: u.service_type }))} 
+              markers={unitsMapMarkers} 
+              polylines={unitRoutes}
               showRealtimeData={true}
-              animateRoutes={false}
+              animateRoutes={true}
             />
           </div>
-        </div>
+        </div> */}
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...cardStyle, height: "100%" }}>

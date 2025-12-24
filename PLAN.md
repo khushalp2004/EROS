@@ -1,38 +1,37 @@
-# Map Center Enhancement Plan
+# Backend 404 Socket Error - Comprehensive Fix Plan
 
-## Task: Add feature that reporter selects a location, the map view must be on that point and not on the default view
+## 🔍 Problem Analysis
+- **Root Cause**: SocketIO not initialized in backend/app.py
+- **Impact**: Frontend gets 404 when trying to connect to WebSocket
+- **Location**: `/Users/khushalpatil/Desktop/EROS/backend/app.py`
 
-## Information Gathered:
-- Current AddEmergency.js has hardcoded center: [19.076, 72.8777]
-- LocationPicker component handles click events and updates position state
-- Selected position is stored in `position` state as [lat, lng]
-- MapView.js shows how to dynamically calculate center based on markers
+## 📋 Implementation Steps
 
-## Plan:
-1. **Modify AddEmergency.js MapContainer**:
-   - Replace hardcoded center with dynamic calculation
-   - Use selected position as center when available, fallback to default
-   - Add proper center state management
+### Step 1: Fix Backend app.py (CRITICAL)
+- [ ] Restore SocketIO initialization in app.py
+- [ ] Add missing notification blueprint registration
+- [ ] Integrate WebSocket events properly
+- [ ] Update CORS configuration for WebSocket
 
-2. **Add MapAutoCenter component** (similar to MapView.js):
-   - Create MapAutoCenter component to handle center updates
-   - Ensure smooth transitions when center changes
+### Step 2: Update WebSocket Events  
+- [ ] Ensure all event handlers are properly registered
+- [ ] Fix CORS configuration for WebSocket connections
+- [ ] Add connection logging and error handling
 
-3. **Update MapContainer props**:
-   - Remove hardcoded center
-   - Add center prop that updates dynamically
-   - Ensure proper key prop for re-rendering when center changes
+### Step 3: Test and Validate
+- [ ] Start backend with SocketIO enabled
+- [ ] Test WebSocket connection from frontend
+- [ ] Verify real-time unit tracking functionality
+- [ ] Check console for connection errors
 
-## Files to Edit:
-- `/Users/khushalpatil/Desktop/EROS/frontend/src/components/AddEmergency.js`
+### Step 4: Additional Improvements
+- [ ] Add connection error handling in frontend
+- [ ] Implement reconnection logic
+- [ ] Add comprehensive logging for debugging
+- [ ] Test notification system with WebSocket
 
-## Implementation Details:
-- Default center: [19.076, 72.8777] (Mumbai coordinates)
-- When position is selected: use [position[0], position[1]] as center
-- When no position: use default center
-- Add smooth animation for center transitions
-
-## Expected Outcome:
-- When reporter selects a location on map, the map automatically centers on that point
-- Map shows default view only when no location is selected
-- Smooth transitions between different map views
+## 🎯 Expected Outcome
+- ✅ WebSocket connection established successfully
+- ✅ Real-time unit tracking working
+- ✅ No more 404 errors
+- ✅ Notifications working via WebSocket

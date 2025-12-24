@@ -16,51 +16,109 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-// Custom icons for different unit types and statuses
-const createUnitIcon = (unitType, status, isRealtime = false) => {
+// Enhanced icons for different unit types and statuses
+const createUnitIcon = (unit, isRealtime = false) => {
+  const { unit_id, service_type, status, latitude, longitude } = unit;
+  
   const getEmoji = () => {
-    if (unitType === 'AMBULANCE') return '🚑';
-    if (unitType === 'FIRE_TRUCK') return '🚒';
-    if (unitType === 'POLICE') return '🚓';
+    if (service_type === 'AMBULANCE') return '🚑';
+    if (service_type === 'FIRE_TRUCK') return '🚒';
+    if (service_type === 'POLICE') return '🚓';
     return '🚐';
   };
 
   const getStatusColor = () => {
-    if (isRealtime) {
-      switch (status) {
-        case 'ENROUTE': return '#00ff00';
-        case 'ARRIVED': return '#ffaa00';
-        case 'DEPARTED': return '#0066ff';
-        case 'AVAILABLE': return '#00ff00';
-        default: return '#666666';
-      }
+    switch (status) {
+      case 'AVAILABLE': return '#28a745'; // Green
+      case 'ENROUTE': return '#007bff'; // Blue
+      case 'ARRIVED': return '#ffc107'; // Yellow
+      case 'DEPARTED': return '#6c757d'; // Gray
+      case 'BUSY': return '#dc3545'; // Red
+      default: return '#6c757d'; // Default gray
     }
-    return '#333333';
+  };
+
+  const getStatusText = () => {
+    switch (status) {
+      case 'AVAILABLE': return 'AVAIL';
+      case 'ENROUTE': return 'ENROUTE';
+      case 'ARRIVED': return 'ARRIVED';
+      case 'DEPARTED': return 'DEPARTED';
+      case 'BUSY': return 'BUSY';
+      default: return status || 'UNKNOWN';
+    }
   };
 
   return L.divIcon({
-    className: "custom-unit-icon",
+    className: "enhanced-unit-icon",
     html: `
       <div style="
         position: relative;
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        background: ${getStatusColor()};
-        border: 2px solid white;
         display: flex;
+        flex-direction: column;
         align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        ${isRealtime ? 'animation: pulse 2s infinite;' : ''}
+        transform: translate(-50%, -50%);
       ">
-        ${getEmoji()}
-        ${isRealtime ? '<div style="position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #00ff00; border-radius: 50%; border: 1px solid white;"></div>' : ''}
+        <!-- Unit Name Badge -->
+        <div style="
+          position: absolute;
+          top: -35px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(0, 0, 0, 0.8);
+          color: white;
+          padding: 2px 6px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: bold;
+          white-space: nowrap;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          z-index: 1000;
+        ">
+          Unit ${unit_id}
+        </div>
+        
+        <!-- Main Icon Container -->
+        <div style="
+          position: relative;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: ${getStatusColor()};
+          border: 3px solid white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+          ${isRealtime ? 'animation: unitPulse 2s infinite;' : ''}
+          z-index: 999;
+        ">
+          ${getEmoji()}
+          ${isRealtime ? '<div style="position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; background: #00ff00; border-radius: 50%; border: 2px solid white; animation: liveBlink 1.5s infinite;"></div>' : ''}
+        </div>
+        
+        <!-- Status Badge -->
+        <div style="
+          position: absolute;
+          bottom: -30px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: ${getStatusColor()};
+          color: white;
+          padding: 1px 4px;
+          border-radius: 8px;
+          font-size: 9px;
+          font-weight: bold;
+          white-space: nowrap;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        ">
+          ${getStatusText()}
+        </div>
       </div>
     `,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [36, 50], // Increased to accommodate name and status
+    iconAnchor: [18, 25], // Centered anchor point
   });
 };
 
@@ -70,6 +128,117 @@ const ambulanceIcon = L.divIcon({
   iconSize: [24, 24],
   iconAnchor: [12, 12],
 });
+
+// Enhanced icons for different emergency types and statuses
+const createEmergencyIcon = (emergency, isSimulated = false) => {
+  const { request_id, emergency_type, status } = emergency;
+  
+  const getEmoji = () => {
+    if (emergency_type === 'MEDICAL') return '🏥';
+    if (emergency_type === 'FIRE') return '🔥';
+    if (emergency_type === 'CRIME') return '🚔';
+    if (emergency_type === 'ACCIDENT') return '🚗';
+    if (emergency_type === 'TRAFFIC') return '🚦';
+    if (emergency_type === 'RESCUE') return '🛟';
+    return '🚨';
+  };
+
+  const getStatusColor = () => {
+    switch (status) {
+      case 'PENDING': return '#ffc107'; // Yellow
+      case 'APPROVED': return '#007bff'; // Blue
+      case 'ASSIGNED': return '#28a745'; // Green
+      case 'ENROUTE': return '#17a2b8'; // Cyan
+      case 'ARRIVED': return '#6f42c1'; // Purple
+      case 'COMPLETED': return '#6c757d'; // Gray
+      default: return '#dc3545'; // Red
+    }
+  };
+
+  const getStatusText = () => {
+    switch (status) {
+      case 'PENDING': return 'PENDING';
+      case 'APPROVED': return 'APPROVED';
+      case 'ASSIGNED': return 'ASSIGNED';
+      case 'ENROUTE': return 'ENROUTE';
+      case 'ARRIVED': return 'ARRIVED';
+      case 'COMPLETED': return 'DONE';
+      default: return status || 'UNKNOWN';
+    }
+  };
+
+  return L.divIcon({
+    className: "enhanced-emergency-icon",
+    html: `
+      <div style="
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transform: translate(-50%, -50%);
+      ">
+        <!-- Emergency ID Badge -->
+        <div style="
+          position: absolute;
+          top: -35px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(0, 0, 0, 0.8);
+          color: white;
+          padding: 2px 6px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: bold;
+          white-space: nowrap;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          z-index: 1000;
+        ">
+          Emergency #${request_id}
+        </div>
+        
+        <!-- Main Icon Container -->
+        <div style="
+          position: relative;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: ${getStatusColor()};
+          border: 3px solid white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+          ${isSimulated ? 'animation: emergencyPulse 2s infinite;' : ''}
+          z-index: 999;
+        ">
+          ${getEmoji()}
+          ${isSimulated ? '<div style="position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; background: #ff6b35; border-radius: 50%; border: 2px solid white; animation: simulatedBlink 1.5s infinite;"></div>' : ''}
+        </div>
+        
+        <!-- Status Badge -->
+        <div style="
+          position: absolute;
+          bottom: -30px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: ${getStatusColor()};
+          color: white;
+          padding: 1px 4px;
+          border-radius: 8px;
+          font-size: 9px;
+          font-weight: bold;
+          white-space: nowrap;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        ">
+          ${getStatusText()}
+        </div>
+      </div>
+    `,
+    iconSize: [36, 50],
+    iconAnchor: [18, 25],
+  });
+};
 
 const defaultIcon = new L.Icon.Default();
 
@@ -83,7 +252,7 @@ function MapAutoCenter({ center }) {
   return null;
 }
 
-function AnimatedPolyline({ positions, color = "#0066ff", progress = 1, showProgress = true, isAnimated = false }) {
+function AnimatedPolyline({ positions, color = "#0066ff", progress = 1, showProgress = true, isAnimated = false, pathOptions = {}, isRealtime = false }) {
   const [animatedPositions, setAnimatedPositions] = React.useState([]);
   
   React.useEffect(() => {
@@ -95,24 +264,29 @@ function AnimatedPolyline({ positions, color = "#0066ff", progress = 1, showProg
 
   if (animatedPositions.length === 0) return null;
 
+  // Merge default options with provided pathOptions
+  const defaultOptions = {
+    color: color, 
+    weight: isRealtime ? 6 : 4, 
+    opacity: isAnimated ? 1 : 0.8,
+    dashArray: isAnimated ? null : (showProgress ? null : "10 10"),
+    className: isAnimated ? "animated-polyline" : ""
+  };
+
+  const mergedOptions = { ...defaultOptions, ...pathOptions };
+
   return (
     <div className={isAnimated ? "animated-polyline-container" : ""}>
       <Polyline
         positions={animatedPositions}
-        pathOptions={{ 
-          color: color, 
-          weight: 6, 
-          opacity: isAnimated ? 1 : 0.8,
-          dashArray: isAnimated ? null : (showProgress ? null : "10 10"),
-          className: isAnimated ? "animated-polyline" : ""
-        }}
+        pathOptions={mergedOptions}
       />
       {showProgress && animatedPositions.length < positions.length && (
         <Polyline
           positions={[animatedPositions[animatedPositions.length - 1], positions[animatedPositions.length]]}
           pathOptions={{ 
-            color: color, 
-            weight: 4, 
+            color: mergedOptions.color, 
+            weight: Math.max(2, mergedOptions.weight - 2), 
             opacity: 0.6,
             dashArray: "5 5"
           }}
@@ -164,12 +338,30 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
   // Use real-time unit data if enabled
   const realtimeData = useRealtimeUnitMarkers(markers);
   const finalMarkers = showRealtimeData ? realtimeData.markers : markers;
+  
+  // Enhance polylines with real-time data and animations
+  const enhancedPolylines = React.useMemo(() => {
+    return polylines.map(polyline => {
+      // Check if this route has real-time data
+      const hasRealtimeData = finalMarkers.some(marker => 
+        marker.unit_id === polyline.unitId && marker.isRealtime
+      );
+      
+      return {
+        ...polyline,
+        isAnimated: animateRoutes,
+        isRealtime: hasRealtimeData,
+        duration: 30000, // 30 seconds for full route
+        startTime: Date.now() - (hasRealtimeData ? 15000 : 0) // Stagger animations
+      };
+    });
+  }, [polylines, finalMarkers, animateRoutes]);
 
   // Calculate route progress for each polyline
   const animatedPolylines = React.useMemo(() => {
-    if (!animateRoutes) return polylines;
+    if (!animateRoutes) return enhancedPolylines;
 
-    return polylines.map((polyline, idx) => {
+    return enhancedPolylines.map((polyline, idx) => {
       // Calculate progress based on time or simulated progress
       const now = Date.now();
       const startTime = polyline.startTime || now;
@@ -179,10 +371,17 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
       return {
         ...polyline,
         progress,
-        animated: true
+        animated: true,
+        // Add enhanced styling for real-time routes
+        pathOptions: {
+          color: polyline.isRealtime ? polyline.color : '#6c757d',
+          weight: polyline.isRealtime ? 6 : 4,
+          opacity: polyline.isRealtime ? 0.9 : 0.6,
+          dashArray: polyline.isRealtime ? null : "8 4"
+        }
       };
     });
-  }, [polylines, animateRoutes]);
+  }, [enhancedPolylines, animateRoutes]);
 
   if (!finalMarkers || finalMarkers.length === 0) {
     return <p style={{ marginTop: "10px" }}>No locations to display.</p>;
@@ -198,7 +397,42 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
             100% { transform: scale(1); }
           }
           
-          .custom-unit-icon {
+          @keyframes unitPulse {
+            0% { transform: scale(1); box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 6px 12px rgba(0,0,0,0.5); }
+            100% { transform: scale(1); box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+          }
+          
+          @keyframes liveBlink {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+          }
+          
+          @keyframes emergencyPulse {
+            0% { transform: scale(1); box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+            50% { transform: scale(1.08); box-shadow: 0 6px 12px rgba(0,0,0,0.5); }
+            100% { transform: scale(1); box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+          }
+          
+          @keyframes simulatedBlink {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+          }
+          
+          @keyframes markerGlow {
+            0% { box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+            50% { box-shadow: 0 4px 8px rgba(0,0,0,0.4), 0 0 20px rgba(0, 123, 255, 0.6); }
+            100% { box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+          }
+          
+          .enhanced-unit-icon {
+            background: none !important;
+            border: none !important;
+          }
+          
+          .enhanced-emergency-icon {
             background: none !important;
             border: none !important;
           }
@@ -206,6 +440,12 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
           .progress-indicator {
             background: none !important;
             border: none !important;
+          }
+          
+          /* Enhanced marker styles */
+          .leaflet-marker-icon.enhanced-unit-icon,
+          .leaflet-marker-icon.enhanced-emergency-icon {
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
           }
         `}
       </style>
@@ -220,61 +460,220 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {finalMarkers.map((m, i) => (
-          <Marker
-            key={`${m.unit_id || m.request_id || i}-${m.isRealtime ? 'realtime' : 'static'}`}
-            position={[m.latitude, m.longitude]}
-            icon={m.isRealtime 
-              ? createUnitIcon(m.type || m.service_type, m.status, true)
-              : (m.isSimulated ? ambulanceIcon : defaultIcon)
-            }
-            zIndexOffset={m.isRealtime ? 500 : (m.isSimulated ? 400 : 0)}
-          >
-            <Popup>
-              <div>
-                <strong>{m.type || m.service_type || 'Emergency'}</strong><br/>
-                Status: <span style={{ 
-                  color: m.isRealtime && m.status === 'ENROUTE' ? '#00ff00' : '#666' 
-                }}>
-                  {m.status}
-                </span><br/>
-                {m.isRealtime && (
-                  <span style={{ color: '#0066ff', fontSize: '12px' }}>
-                    🔴 Live Update
-                  </span>
-                )}
-                {m.isSimulated && (
-                  <span style={{ color: '#ff9900', fontSize: '12px' }}>
-                    🟡 Simulated
-                  </span>
-                )}
-                <br/>
-                Lat: {m.latitude.toFixed(4)}, Lng: {m.longitude.toFixed(4)}
-                {m.lastUpdate && (
-                  <>
-                    <br/>
-                    <small>Updated: {new Date(m.lastUpdate).toLocaleTimeString()}</small>
-                  </>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        {finalMarkers.map((m, i) => {
+          // Enhanced popup content for units
+          const isUnit = m.unit_id !== undefined;
+          const isEmergency = m.request_id !== undefined && !isUnit;
+          const popupContent = isUnit ? (
+            <div>
+              <strong>🚑 Unit {m.unit_id}</strong><br/>
+              <strong>Type:</strong> {m.service_type}<br/>
+              <strong>Status:</strong> 
+              <span style={{ 
+                color: m.status === 'AVAILABLE' ? '#28a745' : 
+                       m.status === 'ENROUTE' ? '#007bff' : 
+                       m.status === 'ARRIVED' ? '#ffc107' : '#6c757d',
+                fontWeight: 'bold'
+              }}>
+                {m.status}
+              </span><br/>
+              {m.isRealtime && (
+                <span style={{ color: '#0066ff', fontSize: '12px' }}>
+                  🔴 Live Tracking
+                </span>
+              )}
+              <br/>
+              <strong>Location:</strong> {m.latitude.toFixed(4)}, {m.longitude.toFixed(4)}
+              {m.lastUpdate && (
+                <>
+                  <br/>
+                  <small>Updated: {new Date(m.lastUpdate).toLocaleTimeString()}</small>
+                </>
+              )}
+            </div>
+          ) : (
+            <div>
+              <strong>🚨 Emergency #{m.request_id}</strong><br/>
+              <strong>Type:</strong> {m.emergency_type || m.type || 'Unknown'}<br/>
+              <strong>Status:</strong> 
+              <span style={{ 
+                color: m.status === 'PENDING' ? '#ffc107' :
+                       m.status === 'APPROVED' ? '#007bff' :
+                       m.status === 'ASSIGNED' ? '#28a745' :
+                       m.status === 'ENROUTE' ? '#17a2b8' :
+                       m.status === 'ARRIVED' ? '#6f42c1' :
+                       m.status === 'COMPLETED' ? '#6c757d' : '#666',
+                fontWeight: 'bold'
+              }}>
+                {m.status}
+              </span><br/>
+              {m.isSimulated && (
+                <span style={{ color: '#ff9900', fontSize: '12px' }}>
+                  🟡 Simulated
+                </span>
+              )}
+              <br/>
+              <strong>Location:</strong> {m.latitude.toFixed(4)}, {m.longitude.toFixed(4)}
+              {m.lastUpdate && (
+                <>
+                  <br/>
+                  <small>Updated: {new Date(m.lastUpdate).toLocaleTimeString()}</small>
+                </>
+              )}
+            </div>
+          );
+
+          // Select appropriate icon based on marker type
+          let markerIcon;
+          if (isUnit && m.isRealtime) {
+            markerIcon = createUnitIcon(m, true);
+          } else if (isEmergency) {
+            markerIcon = createEmergencyIcon(m, m.isSimulated);
+          } else if (m.isSimulated) {
+            markerIcon = ambulanceIcon;
+          } else {
+            markerIcon = defaultIcon;
+          }
+
+          return (
+            <Marker
+              key={`${m.unit_id || m.request_id || i}-${m.isRealtime ? 'realtime' : 'static'}`}
+              position={[m.latitude, m.longitude]}
+              icon={markerIcon}
+              zIndexOffset={m.isRealtime ? 500 : (m.isSimulated ? 400 : 0)}
+            >
+              <Popup>
+                {popupContent}
+              </Popup>
+            </Marker>
+          );
+        })}
         
-        {/* Animated polylines */}
+        {/* Enhanced animated polylines with source/destination markers */}
         {animatedPolylines.map((pl, idx) => (
-          <React.Fragment key={idx}>
+          <React.Fragment key={pl.id || idx}>
+            {/* Source marker (unit starting position) */}
+            <Marker
+              position={pl.positions[0]}
+              icon={L.divIcon({
+                className: "source-marker",
+                html: `
+                  <div style="
+                    position: relative;
+                    width: 24px;
+                    height: 24px;
+                    background: ${pl.isRealtime ? '#007bff' : '#6c757d'};
+                    border: 3px solid white;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                    color: white;
+                    font-weight: bold;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                    ${pl.isRealtime ? 'animation: sourcePulse 2s infinite;' : ''}
+                  ">
+                    📍
+                  </div>
+                `,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+              })}
+              zIndexOffset={pl.isRealtime ? 800 : 400}
+            >
+              <Popup>
+                <div>
+                  <strong>🚩 Source Location</strong><br/>
+                  Unit {pl.unitId} Starting Point<br/>
+                  <small>Service: {pl.serviceType}</small>
+                </div>
+              </Popup>
+            </Marker>
+            
+            {/* Destination marker (emergency location) */}
+            <Marker
+              position={pl.positions[pl.positions.length - 1]}
+              icon={L.divIcon({
+                className: "destination-marker",
+                html: `
+                  <div style="
+                    position: relative;
+                    width: 28px;
+                    height: 28px;
+                    background: #dc3545;
+                    border: 3px solid white;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    color: white;
+                    font-weight: bold;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                    ${pl.isRealtime ? 'animation: destinationPulse 2s infinite;' : ''}
+                  ">
+                    🎯
+                  </div>
+                `,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14],
+              })}
+              zIndexOffset={pl.isRealtime ? 800 : 400}
+            >
+              <Popup>
+                <div>
+                  <strong>🎯 Destination</strong><br/>
+                  Emergency #{pl.emergencyId}<br/>
+                  <small>Target Location</small>
+                </div>
+              </Popup>
+            </Marker>
+            
             <AnimatedPolyline
               positions={pl.positions}
               color={pl.color || "#0066ff"}
               progress={pl.progress || 1}
               showProgress={animateRoutes}
               isAnimated={pl.animated && animateRoutes}
+              pathOptions={pl.pathOptions}
+              isRealtime={pl.isRealtime}
             />
             {animateRoutes && pl.progress < 1 && pl.positions.length > 0 && (
               <RouteProgressIndicator 
                 progress={pl.progress || 0}
                 position={pl.positions[Math.floor((pl.positions.length - 1) * (pl.progress || 0))]}
+              />
+            )}
+            {/* Add route information overlay */}
+            {pl.isRealtime && (
+              <Marker
+                position={pl.positions[Math.floor((pl.positions.length - 1) * (pl.progress || 0))]}
+                icon={L.divIcon({
+                  className: "route-info-overlay",
+                  html: `
+                    <div style="
+                      position: absolute;
+                      top: -40px;
+                      left: 50%;
+                      transform: translateX(-50%);
+                      background: rgba(0, 0, 0, 0.9);
+                      color: white;
+                      padding: 4px 8px;
+                      border-radius: 8px;
+                      font-size: 10px;
+                      white-space: nowrap;
+                      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                      border: 1px solid #007bff;
+                    ">
+                      🔴 Unit ${pl.unitId} → Emergency #${pl.emergencyId}
+                      ${pl.progress ? `<br/><small>Progress: ${Math.round(pl.progress * 100)}%</small>` : ''}
+                    </div>
+                  `,
+                  iconSize: [100, 30],
+                  iconAnchor: [50, 15],
+                })}
+                zIndexOffset={1000}
               />
             )}
           </React.Fragment>

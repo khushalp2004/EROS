@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_socketio import emit
 from models import db, Notification, NotificationPreference
-from events import socketio
+from events import socketio  # Import the shared socketio instance
 from datetime import datetime, timedelta
 import json
 
