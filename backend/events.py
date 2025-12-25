@@ -91,15 +91,20 @@ def simulate_unit_movement(app=None):
                 time.sleep(2)  # Update every 2 seconds
                 
             except Exception as e:
-                print(f"Error in unit movement simulation: {e}")
+                print(f"❌ Error in unit movement simulation: {e}")
+                import traceback
+                traceback.print_exc()
                 time.sleep(5)
     
     def simulate_movement_cycle(app):
         """Simulate movement for dispatched emergencies"""
         from models import Unit, Emergency
         
+        print(f"🔄 Simulation cycle running at {datetime.now()}")
+        
         # Get dispatched emergencies from database
         dispatched_emergencies = Emergency.query.filter_by(status="ASSIGNED").all()
+        print(f"📊 Found {len(dispatched_emergencies)} assigned emergencies")
         
         for emergency in dispatched_emergencies:
             unit_id = emergency.assigned_unit
@@ -190,8 +195,11 @@ def init_websocket(app):
     
     # Start simulation thread only once
     if not simulation_running:
+        print("🚀 Starting backend unit movement simulation...")
         simulation_running = True
-        simulation_thread = simulate_unit_movement(app)
+        with app.app_context():
+            simulation_thread = simulate_unit_movement(app)
+        print("✅ Backend simulation started successfully!")
     
     return socketio
 
@@ -254,6 +262,34 @@ def handle_get_unit_locations():
         }
     
     emit('unit_locations_response', {'locations': locations})
+
+@socketio.on('get_emergency_updates')
+def handle_get_emergency_updates():
+    """Handle request for current emergency updates"""
+    try:
+        from models import Emergency
+        
+        # Get current emergencies
+        emergencies = Emergency.query.all()
+        emergency_data = []
+        
+        for emergency in emergencies:
+            emergency_data.append({
+                'request_id': emergency.request_id,
+                'status': emergency.status,
+                'emergency_type': emergency.emergency_type,
+                'latitude': emergency.latitude,
+                'longitude': emergency.longitude,
+                'assigned_unit': emergency.assigned_unit,
+                'created_at': emergency.created_at.isoformat() if emergency.created_at else None,
+                'updated_at': emergency.updated_at.isoformat() if emergency.updated_at else None
+            })
+        
+        emit('emergency_updates_response', {'emergencies': emergency_data})
+        
+    except Exception as e:
+        print(f"Error fetching emergency updates: {e}")
+        emit('emergency_updates_response', {'emergencies': [], 'error': str(e)})
 
 @socketio.on('update_unit_location')
 def handle_update_unit_location(data):

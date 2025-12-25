@@ -1,9 +1,17 @@
+/**
+ * useWebSocketWithGPSSnapping.js
+ * Enhanced WebSocket hook with GPS route snapping for emergency vehicle tracking
+ * Snaps raw GPS coordinates to nearest route points to fix straight-line movement
+ */
+
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import GPSSnapper from '../utils/GPSSnapper';
+import RouteGeometryManager from '../utils/RouteGeometryManager';
 
 const SOCKET_URL = 'http://127.0.0.1:5001';
 
-export const useWebSocket = () => {
+export const useWebSocketWithGPSSnapping = (routeGeometryManager = null) => {
   const [isConnected, setIsConnected] = useState(false);
   const [unitLocations, setUnitLocations] = useState({});
   const [connectionError, setConnectionError] = useState(null);
@@ -11,6 +19,18 @@ export const useWebSocket = () => {
   const [lastConnectedTime, setLastConnectedTime] = useState(null);
   const socketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  
+  // GPS Snapping components
+  const geometryManagerRef = useRef(routeGeometryManager || new RouteGeometryManager());
+  const gpsSnapperRef = useRef(null);
+
+  // Initialize GPS snapper when geometry manager is ready
+  useEffect(() => {
+    if (geometryManagerRef.current && !gpsSnapperRef.current) {
+      gpsSnapperRef.current = new GPSSnapper(geometryManagerRef.current);
+      console.log('🎯 GPS Snapper initialized for route-following');
+    }
+  }, []);
 
   // Enhanced connection with automatic reconnection
   const connect = useCallback(() => {
@@ -18,7 +38,7 @@ export const useWebSocket = () => {
       return;
     }
 
-    console.log('🔌 Attempting WebSocket connection...');
+    console.log('🔌 Connecting WebSocket with GPS snapping enabled...');
     
     socketRef.current = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
@@ -34,25 +54,19 @@ export const useWebSocket = () => {
 
     // Connection event handlers
     socket.on('connect', () => {
-      console.log('✅ WebSocket connected successfully');
+      console.log('✅ WebSocket connected with GPS snapping');
       setIsConnected(true);
       setConnectionError(null);
       setReconnectAttempts(0);
       setLastConnectedTime(Date.now());
       
-      // Clear any pending reconnection timeout
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
       
-      // Join the unit tracking room
       socket.emit('join_tracking_room');
-      
-      // Request current unit locations
       socket.emit('get_unit_locations');
-      
-      // Request emergency updates
       socket.emit('get_emergency_updates');
     });
 
@@ -60,7 +74,6 @@ export const useWebSocket = () => {
       console.log('❌ WebSocket disconnected:', reason);
       setIsConnected(false);
       
-      // Attempt reconnection if not intentional
       if (reason !== 'io client disconnect') {
         attemptReconnection();
       }
@@ -70,8 +83,6 @@ export const useWebSocket = () => {
       console.error('🔴 WebSocket connection error:', error);
       setConnectionError(error.message);
       setIsConnected(false);
-      
-      // Attempt reconnection with exponential backoff
       attemptReconnection();
     });
 
@@ -90,21 +101,30 @@ export const useWebSocket = () => {
       setConnectionError('Failed to reconnect to server');
     });
 
-    // Unit location update handler with validation
+    // 🚀 ENHANCED: Unit location update handler with GPS snapping
     socket.on('unit_location_update', (data) => {
       console.log('📍 Unit location update received:', data);
       
       // Validate data structure
       if (data && data.unit_id && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        // 🛠️ CRITICAL FIX: Snap GPS to route if we have route data
+        const snappedResult = snapGPSIfNeeded(data);
+        
+        // Update unit locations with snapped position
         setUnitLocations(prev => ({
           ...prev,
           [data.unit_id]: {
-            latitude: data.latitude,
-            longitude: data.longitude,
+            latitude: snappedResult.position[0],
+            longitude: snappedResult.position[1],
             timestamp: data.timestamp,
             status: data.status,
             progress: data.progress,
             emergencyId: data.emergency_id,
+            // Include original GPS data for debugging
+            originalGPS: [data.latitude, data.longitude],
+            isSnapped: snappedResult.isSnapped,
+            snapDistance: snappedResult.distance,
+            snapReason: snappedResult.reason,
             ...data
           }
         }));
@@ -113,28 +133,44 @@ export const useWebSocket = () => {
       }
     });
 
-    // Unit locations response handler
+    // Batch unit locations response with GPS snapping
     socket.on('unit_locations_response', (data) => {
-      console.log('📊 Received unit locations batch:', data.locations);
+      console.log('📊 Received unit locations batch with GPS snapping');
       if (data.locations && typeof data.locations === 'object') {
-        setUnitLocations(data.locations);
+        const snappedLocations = {};
+        
+        Object.entries(data.locations).forEach(([unitId, location]) => {
+          if (location.latitude && location.longitude) {
+            const snappedResult = snapGPSIfNeeded({
+              unit_id: unitId,
+              latitude: location.latitude,
+              longitude: location.longitude,
+              timestamp: location.timestamp,
+              status: location.status
+            });
+            
+            snappedLocations[unitId] = {
+              ...location,
+              latitude: snappedResult.position[0],
+              longitude: snappedResult.position[1],
+              originalGPS: [location.latitude, location.longitude],
+              isSnapped: snappedResult.isSnapped,
+              snapDistance: snappedResult.distance,
+              snapReason: snappedResult.reason
+            };
+          } else {
+            snappedLocations[unitId] = location;
+          }
+        });
+        
+        setUnitLocations(snappedLocations);
       }
     });
 
     // Emergency update handler
     socket.on('emergency_update', (data) => {
       console.log('🚨 Emergency update received:', data);
-      // Handle emergency updates - could be used to trigger state updates
-    });
-
-    // Unit history response handler
-    socket.on('unit_history_response', (data) => {
-      console.log('📈 Unit history received:', data);
-    });
-
-    // Connection status handler
-    socket.on('connection_status', (data) => {
-      console.log('📡 Connection status:', data);
+      // Could be used to trigger route recalculation
     });
 
     // Room joined handler
@@ -149,10 +185,92 @@ export const useWebSocket = () => {
 
   }, []);
 
+  /**
+   * 🛠️ CRITICAL FUNCTION: Snap GPS to route if we have route data
+   * This is the key fix for straight-line movement
+   */
+  const snapGPSIfNeeded = (gpsData) => {
+    if (!gpsSnapperRef.current) {
+      // No GPS snapper available, return original position
+      return {
+        position: [gpsData.latitude, gpsData.longitude],
+        isSnapped: false,
+        reason: 'no_snapper',
+        distance: 0
+      };
+    }
+
+    // Try to find a route for this unit
+    const routeId = findRouteForUnit(gpsData.unit_id);
+    
+    if (!routeId) {
+      // No route found, return original position
+      return {
+        position: [gpsData.latitude, gpsData.longitude],
+        isSnapped: false,
+        reason: 'no_route',
+        distance: 0
+      };
+    }
+
+    // Snap GPS to route
+    const snapResult = gpsSnapperRef.current.snapToRoute(
+      gpsData.latitude, 
+      gpsData.longitude, 
+      routeId,
+      {
+        maxSnapDistance: 100, // Allow snapping up to 100m away
+        gpsAccuracyThreshold: 20, // Snap if GPS accuracy > 20m
+        offRouteThreshold: 50 // Consider off-route if > 50m away
+      }
+    );
+
+    // Log snapping decision for debugging
+    console.log(`🎯 GPS Snap Decision for Unit ${gpsData.unit_id}:`, {
+      original: [gpsData.latitude, gpsData.longitude],
+      snapped: snapResult.snappedPosition,
+      distance: snapResult.distance.toFixed(1) + 'm',
+      snapped: snapResult.isSnapped,
+      reason: snapResult.reason
+    });
+
+    return {
+      position: snapResult.snappedPosition,
+      isSnapped: snapResult.isSnapped,
+      reason: snapResult.reason,
+      distance: snapResult.distance
+    };
+  };
+
+  /**
+   * Find route ID for a unit (emergency response system specific)
+   */
+  const findRouteForUnit = (unitId) => {
+    // Look for active routes in the geometry manager
+    const routes = geometryManagerRef.current.pathCache;
+    
+    // Try to match unit to route (you may need to adjust this logic)
+    for (const [routeId, routeData] of routes.entries()) {
+      // Check if this route belongs to this unit
+      if (routeData.unitId === unitId || routeData.id === unitId) {
+        return routeId;
+      }
+    }
+
+    // Alternative: Look for routes with this unit ID pattern
+    for (const [routeId] of routes.entries()) {
+      if (routeId.includes(unitId)) {
+        return routeId;
+      }
+    }
+
+    return null;
+  };
+
   // Reconnection logic with exponential backoff
   const attemptReconnection = useCallback(() => {
     if (reconnectTimeoutRef.current) {
-      return; // Already attempting reconnection
+      return;
     }
 
     const maxAttempts = 5;
@@ -178,7 +296,6 @@ export const useWebSocket = () => {
   useEffect(() => {
     connect();
 
-    // Cleanup function
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -210,33 +327,25 @@ export const useWebSocket = () => {
     }
   }, [isConnected]);
 
-  // Function to update unit location manually
+  // Function to update unit location manually (with GPS snapping)
   const updateUnitLocation = useCallback((unitId, latitude, longitude, status = 'ENROUTE') => {
     if (socketRef.current && isConnected) {
-      socketRef.current.emit('update_unit_location', {
+      // Apply GPS snapping before sending
+      const snapResult = snapGPSIfNeeded({
         unit_id: unitId,
         latitude,
         longitude,
         status
       });
-      return true;
-    }
-    return false;
-  }, [isConnected]);
 
-  // Function to get unit history
-  const getUnitHistory = useCallback((unitId) => {
-    if (socketRef.current && isConnected) {
-      socketRef.current.emit('get_unit_history', { unit_id: unitId });
-      return true;
-    }
-    return false;
-  }, [isConnected]);
-
-  // Function to emit emergency events
-  const emitEmergencyEvent = useCallback((action, emergencyData) => {
-    if (socketRef.current && isConnected) {
-      socketRef.current.emit(`emergency_${action}`, emergencyData);
+      socketRef.current.emit('update_unit_location', {
+        unit_id: unitId,
+        latitude: snapResult.position[0],
+        longitude: snapResult.position[1],
+        status
+      });
+      
+      console.log(`📤 Updated unit ${unitId} location (${snapResult.isSnapped ? 'snapped' : 'raw'})`);
       return true;
     }
     return false;
@@ -251,7 +360,8 @@ export const useWebSocket = () => {
       hasError: !!connectionError,
       error: connectionError,
       unitCount: Object.keys(unitLocations).length,
-      socketId: socketRef.current?.id
+      socketId: socketRef.current?.id,
+      gpsSnapper: gpsSnapperRef.current ? 'enabled' : 'disabled'
     };
   }, [isConnected, reconnectAttempts, lastConnectedTime, connectionError, unitLocations]);
 
@@ -262,18 +372,18 @@ export const useWebSocket = () => {
     reconnectAttempts,
     lastConnectedTime,
     updateUnitLocation,
-    getUnitHistory,
-    emitEmergencyEvent,
     reconnect,
     refreshUnitLocations,
     getConnectionStats,
-    socket: socketRef.current
+    socket: socketRef.current,
+    geometryManager: geometryManagerRef.current,
+    gpsSnapper: gpsSnapperRef.current
   };
 };
 
-// Hook for real-time unit markers
-export const useRealtimeUnitMarkers = (baseMarkers = []) => {
-  const { unitLocations, isConnected } = useWebSocket();
+// Enhanced hook for real-time unit markers with GPS snapping
+export const useRealtimeUnitMarkersWithSnapping = (baseMarkers = [], routeGeometryManager = null) => {
+  const { unitLocations, isConnected, geometryManager } = useWebSocketWithGPSSnapping(routeGeometryManager);
   
   const realtimeMarkers = baseMarkers.map(baseMarker => {
     const realtimeData = unitLocations[baseMarker.unit_id];
@@ -285,7 +395,12 @@ export const useRealtimeUnitMarkers = (baseMarkers = []) => {
         longitude: realtimeData.longitude,
         status: realtimeData.status,
         isRealtime: true,
-        lastUpdate: realtimeData.timestamp
+        lastUpdate: realtimeData.timestamp,
+        // Include GPS snapping metadata
+        isSnapped: realtimeData.isSnapped,
+        snapDistance: realtimeData.snapDistance,
+        snapReason: realtimeData.snapReason,
+        originalGPS: realtimeData.originalGPS
       };
     }
     
@@ -298,6 +413,7 @@ export const useRealtimeUnitMarkers = (baseMarkers = []) => {
   return {
     markers: realtimeMarkers,
     isConnected,
-    hasRealtimeData: Object.keys(unitLocations).length > 0
+    hasRealtimeData: Object.keys(unitLocations).length > 0,
+    geometryManager
   };
 };

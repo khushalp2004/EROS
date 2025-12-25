@@ -5,6 +5,7 @@ from models import db
 from datetime import datetime
 from config import OSRM_BASE_URL
 from routes.notification_routes import create_emergency_notification, create_unit_notification
+from events import socketio
 import requests
 import math
 
@@ -156,6 +157,51 @@ def dispatch_emergency(emergency_id):
     create_emergency_notification(emergency, 'assigned')
     create_unit_notification(nearest_unit, 'dispatched', emergency=emergency)
 
+    # Emit real-time events for emergency dispatch
+    emergency_data = {
+        'request_id': emergency.request_id,
+        'emergency_type': emergency.emergency_type,
+        'latitude': emergency.latitude,
+        'longitude': emergency.longitude,
+        'status': emergency.status,
+        'approved_by': emergency.approved_by,
+        'assigned_unit': emergency.assigned_unit,
+        'created_at': emergency.created_at.isoformat() if emergency.created_at else None
+    }
+    
+    unit_data = {
+        'unit_id': nearest_unit.unit_id,
+        'service_type': nearest_unit.service_type,
+        'status': nearest_unit.status,
+        'latitude': nearest_unit.latitude,
+        'longitude': nearest_unit.longitude,
+        'emergency_id': emergency.request_id
+    }
+    
+    # Broadcast emergency update to all clients
+    socketio.emit('emergency_updated', {
+        'action': 'assigned',
+        'emergency': emergency_data,
+        'unit': unit_data
+    })
+    
+    # Broadcast to unit tracking room
+    socketio.emit('emergency_update', {
+        'action': 'assigned',
+        'emergency': emergency_data,
+        'unit': unit_data
+    }, room='unit_tracking')
+    
+    # Update unit status
+    socketio.emit('unit_status_update', {
+        'unit_id': nearest_unit.unit_id,
+        'status': 'DISPATCHED',
+        'emergency_id': emergency.request_id,
+        'assigned_emergency': emergency_data
+    })
+    
+    print(f"🔴 Real-time: Emergency #{emergency.request_id} dispatched to Unit {nearest_unit.unit_id}")
+
     return jsonify({
         "message": "Emergency dispatched successfully",
         "emergency_id": emergency.request_id,
@@ -188,6 +234,51 @@ def complete_emergency(emergency_id):
     # Send notifications
     create_emergency_notification(emergency, 'completed')
     create_unit_notification(unit, 'completed', emergency=emergency)
+
+    # Emit real-time events for emergency completion
+    emergency_data = {
+        'request_id': emergency.request_id,
+        'emergency_type': emergency.emergency_type,
+        'latitude': emergency.latitude,
+        'longitude': emergency.longitude,
+        'status': emergency.status,
+        'approved_by': emergency.approved_by,
+        'assigned_unit': emergency.assigned_unit,
+        'created_at': emergency.created_at.isoformat() if emergency.created_at else None,
+        'completed_at': datetime.utcnow().isoformat()
+    }
+    
+    unit_data = {
+        'unit_id': unit.unit_id,
+        'service_type': unit.service_type,
+        'status': unit.status,
+        'latitude': unit.latitude,
+        'longitude': unit.longitude
+    }
+    
+    # Broadcast emergency completion to all clients
+    socketio.emit('emergency_updated', {
+        'action': 'completed',
+        'emergency': emergency_data,
+        'unit': unit_data
+    })
+    
+    # Broadcast to unit tracking room
+    socketio.emit('emergency_update', {
+        'action': 'completed',
+        'emergency': emergency_data,
+        'unit': unit_data
+    }, room='unit_tracking')
+    
+    # Update unit status back to available
+    socketio.emit('unit_status_update', {
+        'unit_id': unit.unit_id,
+        'status': 'AVAILABLE',
+        'emergency_id': emergency.request_id,
+        'completed_emergency': emergency_data
+    })
+    
+    print(f"🔴 Real-time: Emergency #{emergency.request_id} completed, Unit {unit.unit_id} now available")
 
     return jsonify({
         "message": f"Emergency {emergency.request_id} completed and unit {unit.unit_id} is now available"

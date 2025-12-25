@@ -3,7 +3,8 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "../styles/route-animations.css";
-import { useRealtimeUnitMarkers } from "../hooks/useWebSocket";
+import { useRealtimeUnitMarkers } from "../hooks/useWebSocketManager";
+import { useRouteFollowing } from "../hooks/useRouteFollowing";
 
 // Fix missing marker icons when using bundlers (CRA/Vite)
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -252,45 +253,209 @@ function MapAutoCenter({ center }) {
   return null;
 }
 
-function AnimatedPolyline({ positions, color = "#0066ff", progress = 1, showProgress = true, isAnimated = false, pathOptions = {}, isRealtime = false }) {
-  const [animatedPositions, setAnimatedPositions] = React.useState([]);
-  
-  React.useEffect(() => {
-    if (positions && positions.length > 0) {
-      const animated = positions.slice(0, Math.ceil(positions.length * progress));
-      setAnimatedPositions(animated);
+function AnimatedPolyline({
+  positions,
+  color = "#0066ff",
+  progress = 1,
+  showProgress = true,
+  isAnimated = false,
+  pathOptions = {},
+  isRealtime = false,
+  serviceType = null,
+  unitId = null,
+  routeId = null,
+  routeFollowingHook = null
+}) {
+  // Get moving marker position from route following system if available
+  const movingMarkerPosition = React.useMemo(() => {
+    if (routeId && routeFollowingHook && routeFollowingHook.isInitialized) {
+      const routeStatus = routeFollowingHook.getRouteStatus(routeId);
+      if (routeStatus && routeStatus.lastPosition) {
+        return routeStatus.lastPosition;
+      }
     }
+
+    // Fallback to basic interpolation if no route following system
+    if (progress > 0 && positions.length > 1) {
+      const currentIndex = Math.floor((positions.length - 1) * progress);
+      const nextIndex = Math.min(currentIndex + 1, positions.length - 1);
+      const progressInSegment = (progress * (positions.length - 1)) - currentIndex;
+
+      if (currentIndex < positions.length - 1) {
+        const start = positions[currentIndex];
+        const end = positions[nextIndex];
+
+        const interpolatedLat = start[0] + (end[0] - start[0]) * progressInSegment;
+        const interpolatedLon = start[1] + (end[1] - start[1]) * progressInSegment;
+
+        return [interpolatedLat, interpolatedLon];
+      }
+    }
+
+    return null;
+  }, [positions, progress, routeId, routeFollowingHook]);
+
+  // Calculate visible positions based on progress
+  const animatedPositions = React.useMemo(() => {
+    if (!positions || positions.length === 0) return [];
+    return positions.slice(0, Math.max(2, Math.ceil(positions.length * progress)));
   }, [positions, progress]);
 
   if (animatedPositions.length === 0) return null;
 
+  // Get service emoji based on service type
+  const getServiceEmoji = () => {
+    switch (serviceType) {
+      case 'AMBULANCE': return '🚑';
+      case 'FIRE_TRUCK': return '🚒';
+      case 'POLICE': return '🚓';
+      default: return '🚐';
+    }
+  };
+
+  // Get route CSS class based on service type
+  const getRouteClass = () => {
+    switch (serviceType) {
+      case 'AMBULANCE': return 'route-ambulance';
+      case 'FIRE_TRUCK': return 'route-fire';
+      case 'POLICE': return 'route-police';
+      default: return 'route-other';
+    }
+  };
+
   // Merge default options with provided pathOptions
   const defaultOptions = {
-    color: color, 
-    weight: isRealtime ? 6 : 4, 
+    color: color,
+    weight: isRealtime ? 6 : 4,
     opacity: isAnimated ? 1 : 0.8,
     dashArray: isAnimated ? null : (showProgress ? null : "10 10"),
-    className: isAnimated ? "animated-polyline" : ""
+    className: isAnimated ? "animated-polyline enhanced-route-line" : ""
   };
 
   const mergedOptions = { ...defaultOptions, ...pathOptions };
 
+  // Add service type class
+  if (serviceType && !mergedOptions.className.includes(getRouteClass())) {
+    mergedOptions.className += ` ${getRouteClass()}`;
+  }
+
   return (
     <div className={isAnimated ? "animated-polyline-container" : ""}>
-      <Polyline
-        positions={animatedPositions}
-        pathOptions={mergedOptions}
-      />
+      {/* Full route background */}
+      {positions.length > 1 && (
+        <Polyline
+          positions={positions}
+          pathOptions={{
+            color: color,
+            weight: 2,
+            opacity: 0.2,
+            dashArray: "3 3"
+          }}
+        />
+      )}
+
+      {/* Animated progress route */}
+      {animatedPositions.length > 1 && (
+        <Polyline
+          positions={animatedPositions}
+          pathOptions={mergedOptions}
+        />
+      )}
+
+      {/* Route progress indicator */}
       {showProgress && animatedPositions.length < positions.length && (
         <Polyline
           positions={[animatedPositions[animatedPositions.length - 1], positions[animatedPositions.length]]}
-          pathOptions={{ 
-            color: mergedOptions.color, 
-            weight: Math.max(2, mergedOptions.weight - 2), 
+          pathOptions={{
+            color: mergedOptions.color,
+            weight: Math.max(2, (mergedOptions.weight || 4) - 2),
             opacity: 0.6,
             dashArray: "5 5"
           }}
         />
+      )}
+
+      {/* Moving service emoji marker */}
+      {isAnimated && movingMarkerPosition && serviceType && (
+        <Marker
+          position={movingMarkerPosition}
+          icon={L.divIcon({
+            className: "route-emoji-moving service-emoji-pulse",
+            html: `
+              <div style="
+                position: relative;
+                width: 32px;
+                height: 32px;
+                background: rgba(255, 255, 255, 0.9);
+                border: 2px solid ${color};
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 16px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                z-index: 1000;
+              ">
+                ${getServiceEmoji()}
+              </div>
+            `,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          })}
+          zIndexOffset={1500}
+        >
+          <Popup>
+            <div>
+              <strong>🚩 {serviceType} Unit {unitId}</strong><br/>
+              <small>Moving to destination</small><br/>
+              <small>Progress: {Math.round(progress * 100)}%</small>
+              {routeId && routeFollowingHook && (
+                <>
+                  <br/>
+                  <small>Route: {routeId}</small>
+                </>
+              )}
+            </div>
+          </Popup>
+        </Marker>
+      )}
+
+      {/* Static service emoji on route (for non-animated routes) */}
+      {!isAnimated && serviceType && positions.length > 0 && (
+        <Marker
+          position={positions[Math.floor(positions.length / 2)]}
+          icon={L.divIcon({
+            className: "route-static-emoji",
+            html: `
+              <div style="
+                position: relative;
+                width: 28px;
+                height: 28px;
+                background: rgba(255, 255, 255, 0.95);
+                border: 2px solid ${color};
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                z-index: 1000;
+              ">
+                ${getServiceEmoji()}
+              </div>
+            `,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          })}
+          zIndexOffset={800}
+        >
+          <Popup>
+            <div>
+              <strong>🚩 {serviceType} Route</strong><br/>
+              <small>Unit {unitId}</small>
+            </div>
+          </Popup>
+        </Marker>
       )}
     </div>
   );
@@ -328,7 +493,7 @@ function RouteProgressIndicator({ progress, position }) {
   );
 }
 
-function MapView({ markers, center, polylines = [], showRealtimeData = true, animateRoutes = true }) {
+function MapView({ markers, center, polylines = [], showRealtimeData = true, animateRoutes = true, mapRef = null }) {
   const defaultCenter = [19.076, 72.8777];
   const mapCenter = center || (markers.length === 1
     ? [markers[0].latitude, markers[0].longitude]
@@ -338,50 +503,88 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
   // Use real-time unit data if enabled
   const realtimeData = useRealtimeUnitMarkers(markers);
   const finalMarkers = showRealtimeData ? realtimeData.markers : markers;
+
+  // Initialize route following system
+  const routeFollowing = useRouteFollowing(mapRef?.current, {
+    enableGPSSnapping: true,
+    maxSnapDistance: 100,
+    animationFrameRate: 30
+  });
   
-  // Enhance polylines with real-time data and animations
+  // Register routes with the route following system
+  React.useEffect(() => {
+    if (!routeFollowing.isInitialized || !animateRoutes) return;
+
+    polylines.forEach(polyline => {
+      const routeId = `route-${polyline.unitId}-${polyline.emergencyId}`;
+
+      // Check if route is already registered
+      if (!routeFollowing.activeRoutes.includes(routeId)) {
+        try {
+          // Create OSRM-like route object from polyline positions
+          const osrmRoute = {
+            geometry: {
+              coordinates: polyline.positions.map(([lat, lng]) => [lng, lat]) // Convert back to [lng, lat]
+            }
+          };
+
+          routeFollowing.registerRoute(osrmRoute, routeId, {
+            vehicleType: polyline.serviceType,
+            autoStart: false, // We'll control animation manually
+            duration: 30000
+          });
+
+          // Start animation for this route
+          routeFollowing.startAnimation(routeId, {
+            duration: 30000
+          });
+
+          console.log(`🛣️ Registered route animation: ${routeId}`);
+        } catch (error) {
+          console.error(`❌ Failed to register route ${routeId}:`, error);
+        }
+      }
+    });
+  }, [polylines, routeFollowing, animateRoutes]);
+
+  // Enhance polylines with real-time data and route following integration
   const enhancedPolylines = React.useMemo(() => {
     return polylines.map(polyline => {
-      // Check if this route has real-time data
-      const hasRealtimeData = finalMarkers.some(marker => 
+      const routeId = `route-${polyline.unitId}-${polyline.emergencyId}`;
+      const routeStatus = routeFollowing.getRouteStatus(routeId);
+      const hasRealtimeData = finalMarkers.some(marker =>
         marker.unit_id === polyline.unitId && marker.isRealtime
       );
-      
+
+      // Get progress from route following system or calculate manually
+      let progress = polyline.progress || 0;
+      if (routeStatus && routeStatus.progress !== undefined) {
+        progress = routeStatus.progress;
+      } else if (animateRoutes && !routeFollowing.isInitialized) {
+        // Fallback calculation if route following not ready
+        const now = Date.now();
+        const startTime = polyline.startTime || now;
+        const duration = polyline.duration || 30000;
+        progress = Math.min(1, (now - startTime) / duration);
+      }
+
       return {
         ...polyline,
+        routeId,
         isAnimated: animateRoutes,
         isRealtime: hasRealtimeData,
-        duration: 30000, // 30 seconds for full route
-        startTime: Date.now() - (hasRealtimeData ? 15000 : 0) // Stagger animations
-      };
-    });
-  }, [polylines, finalMarkers, animateRoutes]);
-
-  // Calculate route progress for each polyline
-  const animatedPolylines = React.useMemo(() => {
-    if (!animateRoutes) return enhancedPolylines;
-
-    return enhancedPolylines.map((polyline, idx) => {
-      // Calculate progress based on time or simulated progress
-      const now = Date.now();
-      const startTime = polyline.startTime || now;
-      const duration = polyline.duration || 30000; // 30 seconds default
-      const progress = Math.min(1, (now - startTime) / duration);
-
-      return {
-        ...polyline,
         progress,
-        animated: true,
+        routeStatus,
         // Add enhanced styling for real-time routes
         pathOptions: {
-          color: polyline.isRealtime ? polyline.color : '#6c757d',
-          weight: polyline.isRealtime ? 6 : 4,
-          opacity: polyline.isRealtime ? 0.9 : 0.6,
-          dashArray: polyline.isRealtime ? null : "8 4"
+          color: hasRealtimeData ? polyline.color : '#6c757d',
+          weight: hasRealtimeData ? 6 : 4,
+          opacity: hasRealtimeData ? 0.9 : 0.6,
+          dashArray: hasRealtimeData ? null : "8 4"
         }
       };
     });
-  }, [enhancedPolylines, animateRoutes]);
+  }, [polylines, finalMarkers, animateRoutes, routeFollowing]);
 
   if (!finalMarkers || finalMarkers.length === 0) {
     return <p style={{ marginTop: "10px" }}>No locations to display.</p>;
@@ -550,7 +753,7 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
         })}
         
         {/* Enhanced animated polylines with source/destination markers */}
-        {animatedPolylines.map((pl, idx) => (
+        {enhancedPolylines.map((pl, idx) => (
           <React.Fragment key={pl.id || idx}>
             {/* Source marker (unit starting position) */}
             <Marker
@@ -635,9 +838,13 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
               color={pl.color || "#0066ff"}
               progress={pl.progress || 1}
               showProgress={animateRoutes}
-              isAnimated={pl.animated && animateRoutes}
+              isAnimated={pl.isAnimated && animateRoutes}
               pathOptions={pl.pathOptions}
               isRealtime={pl.isRealtime}
+              serviceType={pl.serviceType}
+              unitId={pl.unitId}
+              routeId={pl.routeId}
+              routeFollowingHook={routeFollowing}
             />
             {animateRoutes && pl.progress < 1 && pl.positions.length > 0 && (
               <RouteProgressIndicator 

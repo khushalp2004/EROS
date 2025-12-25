@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import api from "../api";
 import RealtimeMapView from "../components/RealtimeMapView";
 import EmergencyList from "../components/EmergencyList";
+import { useWebSocketManager, connectionManager } from "../hooks/useWebSocketManager";
 
 function Dashboard() {
   const [units, setUnits] = useState([]);
@@ -10,14 +11,188 @@ function Dashboard() {
   const [selectedEmergency, setSelectedEmergency] = useState(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null); // {type, message}
-  const [simTracks, setSimTracks] = useState({}); // request_id -> {start, end, t0, durationMs}
-  const [tick, setTick] = useState(0); // simple timer to drive animation
   const [routeCache, setRouteCache] = useState({}); // request_id -> {coords}
+  const [trackingMode, setTrackingMode] = useState('all'); // 'all', 'selected', 'simulated'
+  const [animationKey, setAnimationKey] = useState(0); // Force re-render for animations
+  const [simulationStats, setSimulationStats] = useState({
+    activeSimulations: 0,
+    totalRoutes: 0,
+    estimatedArrivals: []
+  });
+  
+  // Real-time unit tracking integration - using centralized WebSocket manager
+  const { 
+    isConnected: wsConnected, 
+    unitLocations, 
+    connectionError,
+    reconnectAttempts,
+    refreshUnitLocations,
+    reconnect,
+    getStats
+  } = useWebSocketManager();
+
+  // Real-time event handlers for automatic updates
+  useEffect(() => {
+    if (!wsConnected) return;
+    
+    const handleEmergencyCreated = (emergency) => {
+      console.log('🆕 New emergency created:', emergency);
+      // Add to emergencies list
+      setEmergencies(prev => {
+        const exists = prev.some(e => e.request_id === emergency.request_id);
+        if (!exists) {
+          return [...prev, emergency];
+        }
+        return prev;
+      });
+      showToast(`New ${emergency.emergency_type} emergency #${emergency.request_id} reported!`, 'info', 5000);
+    };
+
+    const handleEmergencyUpdated = (data) => {
+      console.log('📝 Emergency updated:', data);
+      const { action, emergency } = data;
+      
+      // Update emergency in the list
+      setEmergencies(prev => {
+        return prev.map(e => 
+          e.request_id === emergency.request_id ? { ...e, ...emergency } : e
+        );
+      });
+
+      // Show appropriate message based on action
+      if (action === 'assigned') {
+        showToast(`Emergency #${emergency.request_id} assigned to Unit ${emergency.assigned_unit}`, 'success', 3000);
+      } else if (action === 'completed') {
+        showToast(`Emergency #${emergency.request_id} completed`, 'success', 3000);
+      }
+    };
+
+    const handleUnitStatusUpdate = (data) => {
+      console.log('📍 Unit status updated:', data);
+      const { unit_id, status, emergency_id } = data;
+      
+      // Update unit in the list
+      setUnits(prev => {
+        return prev.map(u => 
+          u.unit_id === unit_id ? { ...u, status } : u
+        );
+      });
+
+      if (status === 'DISPATCHED') {
+        showToast(`Unit ${unit_id} dispatched to Emergency #${emergency_id}`, 'info', 3000);
+      } else if (status === 'AVAILABLE') {
+        showToast(`Unit ${unit_id} is now available`, 'success', 2000);
+      }
+    };
+
+    // Subscribe to real-time events via WebSocket manager
+    const unsubscribeEmergencyCreated = connectionManager.subscribe('emergency_created', handleEmergencyCreated);
+    const unsubscribeEmergencyUpdated = connectionManager.subscribe('emergency_updated', handleEmergencyUpdated);
+    const unsubscribeUnitStatusUpdate = connectionManager.subscribe('unit_status_update', handleUnitStatusUpdate);
+
+    return () => {
+      unsubscribeEmergencyCreated && unsubscribeEmergencyCreated();
+      unsubscribeEmergencyUpdated && unsubscribeEmergencyUpdated();
+      unsubscribeUnitStatusUpdate && unsubscribeUnitStatusUpdate();
+    };
+  }, [wsConnected]);
 
   const showToast = (message, type = "info", duration = 3500) => {
     setToast({ message, type });
     if (duration) {
       setTimeout(() => setToast(null), duration);
+    }
+  };
+
+  // Utility functions matching UnitsTracking
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'AVAILABLE': return '#28a745';
+      case 'ENROUTE': return '#007bff';
+      case 'ARRIVED': return '#ffc107';
+      case 'DEPARTED': return '#6c757d';
+      case 'BUSY': return '#dc3545';
+      default: return '#6c757d';
+    }
+  };
+
+  const getServiceEmoji = (serviceType) => {
+    switch (serviceType) {
+      case 'AMBULANCE': return '🚑';
+      case 'FIRE_TRUCK': return '🚒';
+      case 'POLICE': return '🚓';
+      default: return '🚐';
+    }
+  };
+
+  const formatTime = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return 'Invalid Date';
+      return date.toLocaleTimeString();
+    } catch (error) {
+      console.error('Error formatting timestamp:', error);
+      return 'Error';
+    }
+  };
+
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const calculateSimulationStats = () => {
+    const activeSims = Object.keys(unitLocations).length;
+    const assignedEmergencies = emergencies.filter(e => e.status === 'ASSIGNED');
+    const estimatedArrivals = assignedEmergencies.map(emergency => {
+      const unit = units.find(u => u.unit_id === emergency.assigned_unit);
+      if (!unit) return null;
+      
+      const distance = calculateDistance(
+        unit.latitude, unit.longitude,
+        emergency.latitude, emergency.longitude
+      );
+      // Rough estimation: 30 km/h average speed in city
+      const estimatedMinutes = Math.ceil((distance / 30) * 60);
+      
+      return {
+        unitId: emergency.assigned_unit,
+        emergencyId: emergency.request_id,
+        distance: distance.toFixed(1),
+        etaMinutes: estimatedMinutes
+      };
+    }).filter(Boolean);
+
+    setSimulationStats({
+      activeSimulations: activeSims,
+      totalRoutes: assignedEmergencies.length,
+      estimatedArrivals
+    });
+  };
+
+  // Animation control functions
+  const handleToggleSimulation = () => {
+    const newMode = trackingMode === 'simulated' ? 'all' : 'simulated';
+    setTrackingMode(newMode);
+    // Force re-render for animation restart
+    setAnimationKey(prev => prev + 1);
+    if (newMode !== 'all') {
+      showToast(`${newMode === 'simulated' ? '🔴 Live' : '📊 All'} route animation enabled`, 'info', 2000);
+    }
+  };
+
+  const getTrackingModeIcon = () => {
+    switch (trackingMode) {
+      case 'selected': return '🎯';
+      case 'simulated': return '🔴';
+      default: return '📍';
     }
   };
 
@@ -41,11 +216,33 @@ function Dashboard() {
     fetchData();
   }, []);
 
-  // Drive animation timer - increased frequency for smoother animation
+  // WebSocket connection monitoring - centralized coordination
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 100); // 10 FPS for smoother animation
-    return () => clearInterval(id);
-  }, []);
+    if (wsConnected) {
+      console.log('✅ WebSocket connected - centralized real-time tracking enabled');
+      
+      // Initial data refresh when WebSocket connects
+      refreshUnitLocations();
+    }
+  }, [wsConnected, refreshUnitLocations]);
+
+  // Calculate simulation stats whenever data changes
+  useEffect(() => {
+    if (units.length > 0 || emergencies.length > 0) {
+      calculateSimulationStats();
+    }
+  }, [units, emergencies, unitLocations]);
+
+  // Force periodic updates for animation progress when in animated modes
+  useEffect(() => {
+    if (trackingMode === 'simulated' || trackingMode === 'selected') {
+      const interval = setInterval(() => {
+        setAnimationKey(prev => prev + 1);
+      }, 1000); // Update every second for smooth animation
+
+      return () => clearInterval(interval);
+    }
+  }, [trackingMode]);
 
   const filteredEmergencies =
     statusFilter === "ALL"
@@ -65,26 +262,98 @@ function Dashboard() {
     return acc;
   }, {});
 
-  // Build/refresh simulated tracks for assigned emergencies
-  useEffect(() => {
-    const unitById = Object.fromEntries(units.map((u) => [u.unit_id, u]));
-    const nextTracks = {};
+  // Utility function: decide route color based on service type (matches UnitsTracking)
+  const getRouteColor = (serviceType) => {
+    if (!serviceType) return "#6c757d";
+    switch (serviceType.toUpperCase()) {
+      case "AMBULANCE": return "#dc3545";
+      case "POLICE": return "#0d6efd";
+      case "FIRE": return "#fd7e14";
+      default: return "#6c757d";
+    }
+  };
+
+  // Simplified route tracking - matches UnitsTracking approach
+  const routePolylines = useMemo(() => {
+    const routes = [];
+    
     emergencies
       .filter((e) => e.status === "ASSIGNED" && e.assigned_unit)
       .forEach((e) => {
-        const unit = unitById[e.assigned_unit];
+        const unit = units.find((u) => u.unit_id === e.assigned_unit);
         if (!unit) return;
-        const existing = simTracks[e.request_id];
-        nextTracks[e.request_id] = {
-          start: [unit.latitude, unit.longitude],
-          end: [e.latitude, e.longitude],
-          t0: existing?.t0 || Date.now(),
-          durationMs: existing?.durationMs || 30_000, // Increased to 30s for smoother animation
-        };
+        
+        // Use real-time location if available, otherwise use unit's current location
+        const realtimeLocation = unitLocations[unit.unit_id];
+        const unitLat = realtimeLocation ? realtimeLocation.latitude : unit.latitude;
+        const unitLon = realtimeLocation ? realtimeLocation.longitude : unit.longitude;
+        
+        routes.push({
+          id: `${unit.unit_id}-${e.request_id}`,
+          positions: [
+            [unitLat, unitLon],
+            [e.latitude, e.longitude]
+          ],
+          color: getRouteColor(unit.service_type),
+          unitId: unit.unit_id,
+          emergencyId: e.request_id,
+          serviceType: unit.service_type,
+          isRealtime: !!realtimeLocation
+        });
       });
-    setSimTracks(nextTracks);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emergencies, units]);
+    
+    return routes;
+  }, [units, emergencies, unitLocations]);
+
+  // Real-time route polylines with enhanced animation support - MOVED BEFORE useEffect
+  const realtimeRoutePolylines = useMemo(() => {
+    // Use the routePolylines we calculated earlier, but enhance with routeCache for realistic routes
+    const polylines = routePolylines.map(route => {
+      const routeData = routeCache[route.emergencyId]?.coords;
+      const positions = routeData && routeData.length > 1 ? routeData : route.positions;
+      
+      // Calculate animation progress based on tracking mode
+      let progress = 1;
+      let isAnimated = false;
+      
+      if (trackingMode === 'simulated' || trackingMode === 'selected') {
+        // Animate routes in live/selected mode
+        isAnimated = true;
+        if (!route.isRealtime) {
+          // Simulate progress for non-realtime routes
+          const startTime = Date.now() - (route.emergencyId * 1000); // Stagger animations
+          const animationDuration = 30000; // 30 seconds
+          const elapsed = Date.now() - startTime;
+          progress = Math.min(1, elapsed / animationDuration);
+        }
+      }
+      
+      return {
+        ...route,
+        positions,
+        originalPositions: positions,
+        progress,
+        color: route.color,
+        isAnimated,
+        serviceType: route.serviceType,
+        unitId: route.unitId
+      };
+    });
+    
+    // Filter routes based on tracking mode (matching UnitsTracking logic)
+    const filteredPolylines = trackingMode === 'all' ? polylines : 
+      trackingMode === 'simulated' ? polylines.filter(route => route.isRealtime) :
+      trackingMode === 'selected' && selectedEmergency ? 
+        polylines.filter(route => route.emergencyId === selectedEmergency.request_id) :
+        polylines;
+    
+    // Debug logging
+    if (filteredPolylines.length > 0) {
+      console.log('🛣️ Real-time route polylines:', filteredPolylines);
+    }
+    
+    return filteredPolylines;
+  }, [routePolylines, routeCache, trackingMode, selectedEmergency]);
 
   // Fetch realistic route polyline for assigned emergencies (OSRM public demo)
   useEffect(() => {
@@ -115,97 +384,13 @@ function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emergencies, units, routeCache]);
 
-  // Helper: interpolate along polyline by fraction
-  const interpolatePolyline = (coords, frac) => {
-    if (!coords || coords.length === 0) return null;
-    if (coords.length === 1) return coords[0];
-    // compute cumulative distances
-    const segs = [];
-    let total = 0;
-    for (let i = 0; i < coords.length - 1; i++) {
-      const [lat1, lon1] = coords[i];
-      const [lat2, lon2] = coords[i + 1];
-      const d = Math.hypot(lat2 - lat1, lon2 - lon1);
-      segs.push({ d, from: coords[i], to: coords[i + 1] });
-      total += d;
+  // Filter markers based on tracking mode
+  const mapMarkers = useMemo(() => {
+    if (trackingMode === 'selected' && selectedEmergency) {
+      return [{ ...selectedEmergency, type: selectedEmergency.emergency_type }];
     }
-    const target = frac * total;
-    let acc = 0;
-    for (const s of segs) {
-      if (acc + s.d >= target) {
-        const localFrac = s.d === 0 ? 0 : (target - acc) / s.d;
-        return [
-          s.from[0] + (s.to[0] - s.from[0]) * localFrac,
-          s.from[1] + (s.to[1] - s.from[1]) * localFrac,
-        ];
-      }
-      acc += s.d;
-    }
-    return coords[coords.length - 1];
-  };
-
-  // Compute simulated positions for assigned emergencies (use tick to re-render)
-  const simulatedUnitMarkers = useMemo(() => {
-    const markers = Object.entries(simTracks).map(([reqId, track]) => {
-      const now = Date.now();
-      const frac = Math.min(1, Math.max(0, (now - track.t0) / track.durationMs));
-      const route = routeCache[reqId]?.coords;
-      let lat, lng;
-      if (route && route.length > 1) {
-        const pos = interpolatePolyline(route, frac);
-        lat = pos[0];
-        lng = pos[1];
-      } else {
-        lat = track.start[0] + (track.end[0] - track.start[0]) * frac;
-        lng = track.start[1] + (track.end[1] - track.start[1]) * frac;
-      }
-      return {
-        request_id: Number(reqId),
-        latitude: lat,
-        longitude: lng,
-        type: "Unit (simulated)",
-        status: "ENROUTE",
-        isSimulated: true,
-        progress: frac
-      };
-    });
-    
-    // Debug logging
-    if (markers.length > 0) {
-      console.log('🐄 Animated unit markers:', markers);
-    }
-    
-    return markers;
-  }, [simTracks, routeCache, tick]);
-
-  // Build animated polylines with progress tracking
-  const simulatedPolylines = useMemo(() => {
-    const polylines = Object.entries(simTracks).map(([reqId, track]) => {
-      const route = routeCache[reqId]?.coords;
-      const positions = route && route.length > 1 ? route : [track.start, track.end];
-      
-      // Calculate current progress for animation
-      const now = Date.now();
-      const progress = Math.min(1, Math.max(0, (now - track.t0) / track.durationMs));
-      
-      return {
-        request_id: Number(reqId),
-        positions,
-        originalPositions: positions, // For the faint background route
-        progress, // Progress from 0 to 1 for animation
-        color: "#0080ff",
-        startTime: track.t0,
-        duration: track.durationMs
-      };
-    });
-    
-    // Debug logging
-    if (polylines.length > 0) {
-      console.log('🛣️ Animated polylines:', polylines);
-    }
-    
-    return polylines;
-  }, [simTracks, routeCache, tick]);
+    return filteredEmergencies.map((e) => ({ ...e, type: e.emergency_type }));
+  }, [trackingMode, selectedEmergency, filteredEmergencies]);
 
   const handleDispatch = async (emergency) => {
     try {
@@ -233,111 +418,6 @@ function Dashboard() {
     }
   };
 
-  // Create routes for units responding to emergencies (for units map)
-  const unitRoutes = useMemo(() => {
-    const routes = [];
-    emergencies
-      .filter((e) => e.status === "ASSIGNED" && e.assigned_unit)
-      .forEach((e) => {
-        const unit = units.find((u) => u.unit_id === e.assigned_unit);
-        if (unit) {
-          const track = simTracks[e.request_id];
-          if (track) {
-            const route = routeCache[e.request_id]?.coords;
-            const positions = route && route.length > 1 ? route : [track.start, track.end];
-            
-            // Calculate current progress for animation
-            const now = Date.now();
-            const progress = Math.min(1, Math.max(0, (now - track.t0) / track.durationMs));
-            
-            routes.push({
-              unit_id: unit.unit_id,
-              request_id: e.request_id,
-              positions,
-              originalPositions: positions,
-              progress,
-              color: unit.service_type === 'AMBULANCE' ? '#dc3545' : 
-                     unit.service_type === 'POLICE' ? '#007bff' : '#fd7e14',
-              startTime: track.t0,
-              duration: track.durationMs
-            });
-          }
-        }
-      });
-    return routes;
-  }, [emergencies, units, simTracks, routeCache, tick]);
-
-  // Enhanced units map markers with simulated tracking
-  const unitsMapMarkers = useMemo(() => {
-    const enhancedUnits = units.map(unit => ({
-      ...unit,
-      isRealtime: true
-    }));
-
-    // Add simulated units for those enroute
-    const simulatedUnits = emergencies
-      .filter(e => e.status === "ASSIGNED" && e.assigned_unit)
-      .map(e => {
-        const track = simTracks[e.request_id];
-        if (!track) return null;
-        
-        const now = Date.now();
-        const frac = Math.min(1, Math.max(0, (now - track.t0) / track.durationMs));
-        const route = routeCache[e.request_id]?.coords;
-        let lat, lng;
-        
-        if (route && route.length > 1) {
-          const pos = interpolatePolyline(route, frac);
-          lat = pos[0];
-          lng = pos[1];
-        } else {
-          lat = track.start[0] + (track.end[0] - track.start[0]) * frac;
-          lng = track.start[1] + (track.end[1] - track.start[1]) * frac;
-        }
-        
-        return {
-          ...units.find(u => u.unit_id === e.assigned_unit),
-          latitude: lat,
-          longitude: lng,
-          status: "ENROUTE",
-          isSimulated: true,
-          assigned_emergency: e.request_id,
-          progress: frac
-        };
-      })
-      .filter(Boolean);
-
-    return [...enhancedUnits, ...simulatedUnits];
-  }, [units, emergencies, simTracks, routeCache, tick]);
-
-  // Choose markers for the emergencies map, showing simulated unit if relevant
-  const mapMarkers = (() => {
-    if (activeSelection) {
-      const simForSelection = simulatedUnitMarkers.filter(
-        (m) => m.request_id === activeSelection.request_id
-      );
-      return [
-        { ...activeSelection, type: activeSelection.emergency_type },
-        ...simForSelection,
-      ];
-    }
-    return [
-      ...filteredEmergencies.map((e) => ({ ...e, type: e.emergency_type })),
-      ...simulatedUnitMarkers,
-    ];
-  })();
-
-  const followCenter = (() => {
-    if (!activeSelection) return null;
-    const simForSelection = simulatedUnitMarkers.find(
-      (m) => m.request_id === activeSelection.request_id
-    );
-    if (simForSelection) {
-      return [simForSelection.latitude, simForSelection.longitude];
-    }
-    return [activeSelection.latitude, activeSelection.longitude];
-  })();
-
   const cardStyle = {
     background: "#fff",
     borderRadius: "12px",
@@ -349,120 +429,408 @@ function Dashboard() {
   const sectionTitleStyle = { margin: "0 0 8px 0" };
 
   return (
-    <div style={{ padding: "16px", background: "#f6f8fb", minHeight: "100vh" }}>
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            top: "16px",
-            right: "16px",
-            padding: "12px 14px",
-            borderRadius: "10px",
-            background: toast.type === "error" ? "#ffe9e6" : "#e7f5ff",
-            color: toast.type === "error" ? "#d1433f" : "#0b7285",
-            boxShadow: "0 6px 20px rgba(0,0,0,0.1)",
-            border: `1px solid ${toast.type === "error" ? "#f5c2c0" : "#b5e0f2"}`,
-            zIndex: 1000,
-            maxWidth: "320px",
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
-      <h2 style={{ marginBottom: "16px" }}>Authority Dashboard</h2>
-
-      <div style={{ marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ color: "#5f6b7a" }}>
-          {loading ? "Refreshing..." : "Live overview with animated routes"}
-          {simulatedPolylines.length > 0 && (
-            <span style={{ 
-              marginLeft: "10px", 
-              color: "#00aa00", 
-              fontWeight: "bold",
-              animation: "pulse 1s infinite"
-            }}>
-              🏃 {simulatedPolylines.length} Active Animations
-            </span>
-          )}
-        </div>
-        <button
-          onClick={fetchData}
-          style={{
-            padding: "8px 12px",
-            borderRadius: "8px",
-            border: "1px solid #d0d7de",
-            background: "#f3f4f6",
-            cursor: "pointer",
-          }}
-        >
-          Refresh
-        </button>
+    <div className="tracking-layout">
+      {/* Toast Container */}
+      <div className="toast-container">
+        {toast && (
+          <div className={`toast ${toast.type}`}>
+            {toast.message}
+          </div>
+        )}
       </div>
 
-      <div style={{ display: "flex", gap: "16px", alignItems: "stretch" }}>
-        {/* <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ ...cardStyle, height: "100%" }}>
-            <h3 style={sectionTitleStyle}>Units (Real-time Tracking with Routes)</h3>
-            <RealtimeMapView 
-              markers={unitsMapMarkers} 
-              polylines={unitRoutes}
-              showRealtimeData={true}
-              animateRoutes={true}
-            />
-          </div>
-        </div> */}
+      {/* Page Header */}
+      <div className="tracking-header">
+        <div className="container">
+          <h1 className="page-title">
+            📊 Authority Dashboard
+          </h1>
+          <p className="page-subtitle">
+            Real-time emergency response management and monitoring
+          </p>
+        </div>
+      </div>
 
+      {/* Enhanced Controls Header */}
+      <div className="card" style={{ margin: 'var(--space-6)', marginBottom: 'var(--space-4)' }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'flex-start',
+          gap: 'var(--space-6)',
+          flexWrap: 'wrap'
+        }}>
+          {/* Statistics */}
+          <div style={{ flex: 1, minWidth: '300px' }}>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              gap: 'var(--space-4)',
+              marginBottom: 'var(--space-4)'
+            }}>
+              <div className="route-stat-item" style={{ textAlign: 'center' }}>
+                <div className="stat-icon">📍</div>
+                <div className="stat-value">{units.length}</div>
+                <div className="stat-label">Total Units</div>
+              </div>
+              <div className="route-stat-item" style={{ textAlign: 'center' }}>
+                <div className="stat-icon">🚨</div>
+                <div className="stat-value">{emergencies.length}</div>
+                <div className="stat-label">Active Emergencies</div>
+              </div>
+              <div className="route-stat-item" style={{ textAlign: 'center' }}>
+                <div className="stat-icon">🔴</div>
+                <div className="stat-value">{simulationStats.activeSimulations}</div>
+                <div className="stat-label">Live Simulations</div>
+              </div>
+              <div className={`connection-status ${wsConnected ? 'connected' : 'disconnected'}`}>
+                <div className="status-dot"></div>
+                <div>
+                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)' }}>
+                    {wsConnected ? 'Connected' : 'Disconnected'}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)' }}>WebSocket Status</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Connection Error Display */}
+            {connectionError && (
+              <div style={{
+                padding: 'var(--space-3)',
+                backgroundColor: 'var(--accent-red)',
+                color: 'var(--text-inverse)',
+                borderRadius: 'var(--radius-lg)',
+                marginTop: 'var(--space-3)',
+                fontSize: 'var(--text-sm)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <span>Connection Error: {connectionError}</span>
+                <button 
+                  onClick={reconnect}
+                  className="btn btn-sm"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    color: 'var(--text-inverse)',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    fontSize: 'var(--text-xs)'
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            
+            {reconnectAttempts > 0 && (
+              <div style={{ 
+                marginTop: 'var(--space-2)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--accent-red)',
+                textAlign: 'center'
+              }}>
+                Reconnecting... {reconnectAttempts}/5
+              </div>
+            )}
+          </div>
+
+          {/* Control Buttons */}
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+            minWidth: '200px'
+          }}>
+            <button
+              onClick={handleToggleSimulation}
+              className={`btn btn-lg ${trackingMode === 'simulated' ? 'btn-danger' : 'btn-primary'}`}
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                fontWeight: 'var(--font-semibold)'
+              }}
+            >
+              {trackingMode === 'simulated' ? '🔴 Live Tracking' : '📊 All Routes'}
+            </button>
+            
+            <button
+              onClick={async () => {
+                await fetchData();
+                refreshUnitLocations();
+              }}
+              className="btn btn-outline"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                borderColor: 'var(--primary-blue)',
+                color: 'var(--primary-blue)'
+              }}
+            >
+              🔄 Refresh Data
+            </button>
+          </div>
+        </div>
+        
+        
+        {/* Route Statistics Display */}
+        {simulationStats.estimatedArrivals.length > 0 && (
+          <div style={{
+            marginTop: 'var(--space-6)',
+            padding: 'var(--space-4)',
+            backgroundColor: 'var(--gray-50)',
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--gray-200)'
+          }}>
+            <div style={{ 
+              fontSize: 'var(--text-base)', 
+              fontWeight: 'var(--font-semibold)', 
+              marginBottom: 'var(--space-3)',
+              color: 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
+            }}>
+              🚨 Active Routes & ETA
+            </div>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: 'var(--space-3)'
+            }}>
+              {simulationStats.estimatedArrivals.slice(0, 3).map((route, index) => (
+                <div key={index} style={{ 
+                  padding: 'var(--space-3)',
+                  backgroundColor: 'var(--bg-primary)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1px solid var(--gray-200)',
+                  boxShadow: 'var(--shadow-sm)'
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 'var(--space-2)',
+                    fontWeight: 'var(--font-medium)',
+                    marginBottom: 'var(--space-2)'
+                  }}>
+                    <span style={{ fontSize: 'var(--text-lg)' }}>
+                      {getServiceEmoji(units.find(u => u.unit_id === route.unitId)?.service_type)}
+                    </span>
+                    <strong>Unit {route.unitId}</strong>
+                    <span style={{ color: 'var(--text-muted)' }}>→</span>
+                    <strong>Emergency #{route.emergencyId}</strong>
+                  </div>
+                  <div style={{ 
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-4)'
+                  }}>
+                    <span>
+                      📍 {route.distance}km
+                    </span>
+                    <span>
+                      ⏱️ ETA: {route.etaMinutes}min
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: "var(--space-6)", alignItems: "stretch", marginBottom: 'var(--space-6)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ ...cardStyle, height: "100%" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-              <h3 style={sectionTitleStyle}>Emergencies & Routes (Live Animation)</h3>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px" }}>
-                <label style={{ fontWeight: 600 }}>Status:</label>
+          <div className="card" style={{ 
+            height: "100%", 
+            border: '1px solid var(--gray-200)',
+            borderRadius: 'var(--radius-xl)',
+            overflow: 'hidden'
+          }}>
+            <div style={{ 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center", 
+              gap: "var(--space-4)",
+              padding: 'var(--space-6)',
+              backgroundColor: 'var(--gray-50)',
+              borderBottom: '1px solid var(--gray-200)'
+            }}>
+              <h3 style={{ 
+                ...sectionTitleStyle,
+                fontSize: 'var(--text-lg)',
+                fontWeight: 'var(--font-semibold)',
+                color: 'var(--text-primary)',
+                margin: 0
+              }}>
+                {getTrackingModeIcon()} Emergencies & Routes
+                <span style={{ 
+                  marginLeft: 'var(--space-2)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text-secondary)',
+                  fontWeight: 'var(--font-normal)'
+                }}>
+                  ({trackingMode.charAt(0).toUpperCase() + trackingMode.slice(1)} Mode)
+                </span>
+              </h3>
+              <div style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "var(--space-3)", 
+                fontSize: "var(--text-sm)",
+                flexWrap: 'wrap'
+              }}>
+                <label style={{ 
+                  fontWeight: 'var(--font-medium)',
+                  color: 'var(--text-secondary)'
+                }}>
+                  Status Filter:
+                </label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  style={{ padding: "6px 8px", borderRadius: "8px", border: "1px solid #d0d7de" }}
+                  className="form-control"
+                  style={{ 
+                    padding: 'var(--space-2) var(--space-3)',
+                    fontSize: 'var(--text-sm)',
+                    borderRadius: 'var(--radius-md)',
+                    minWidth: '120px'
+                  }}
                 >
-                  <option value="ALL">All</option>
+                  <option value="ALL">All Status</option>
                   <option value="PENDING">Pending</option>
                   <option value="APPROVED">Approved</option>
                   <option value="ASSIGNED">Assigned</option>
                   <option value="COMPLETED">Completed</option>
                 </select>
-                <span style={{ color: "#5f6b7a" }}>
+                <span style={{ 
+                  color: "var(--text-muted)",
+                  fontWeight: 'var(--font-medium)'
+                }}>
                   Showing {filteredEmergencies.length} / {emergencies.length}
                 </span>
+                {trackingMode === 'simulated' && (
+                  <span className="badge" style={{ 
+                    backgroundColor: 'var(--accent-red)',
+                    color: 'var(--text-inverse)',
+                    fontSize: 'var(--text-xs)',
+                    padding: 'var(--space-1) var(--space-2)'
+                  }}>
+                    🔴 Live Animation
+                  </span>
+                )}
               </div>
             </div>
-            <RealtimeMapView
-              markers={
-                activeSelection
-                  ? [{ ...activeSelection, type: activeSelection.emergency_type }]
-                  : filteredEmergencies.map((e) => ({ ...e, type: e.emergency_type }))
-              }
-              polylines={
-                activeSelection
-                  ? simulatedPolylines.filter((p) => p.request_id === activeSelection.request_id)
-                  : simulatedPolylines
-              }
-              showRealtimeData={true}
-              animateRoutes={true}
-            />
+            {/* Map Container */}
+            <div className="map-container" style={{ 
+              height: '500px',
+              position: 'relative'
+            }}>
+              <RealtimeMapView
+                key={`map-${animationKey}`}
+                markers={
+                  activeSelection
+                    ? [{ ...activeSelection, type: activeSelection.emergency_type }]
+                    : mapMarkers
+                }
+                polylines={
+                  activeSelection
+                    ? realtimeRoutePolylines.filter((p) => p.emergencyId === activeSelection.request_id)
+                    : realtimeRoutePolylines
+                }
+                showRealtimeData={true}
+                animateRoutes={trackingMode !== 'all'}
+              />
+              
+              {/* Enhanced Map Legend */}
+              <div className="map-legend">
+                <div style={{ 
+                  fontWeight: 'var(--font-semibold)', 
+                  marginBottom: 'var(--space-3)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text-primary)',
+                  borderBottom: '1px solid var(--gray-200)',
+                  paddingBottom: 'var(--space-2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)'
+                }}>
+                  {getTrackingModeIcon()} {trackingMode.charAt(0).toUpperCase() + trackingMode.slice(1)} Mode
+                </div>
+                <div style={{ 
+                  fontSize: 'var(--text-xs)', 
+                  color: 'var(--text-secondary)', 
+                  marginBottom: 'var(--space-2)',
+                  lineHeight: 1.5
+                }}>
+                  🚑 Ambulance | 🚒 Fire Truck | 🚓 Police | 🚐 Other Units
+                </div>
+                {trackingMode !== 'all' && (
+                  <div style={{ 
+                    fontSize: 'var(--text-xs)', 
+                    color: 'var(--primary-blue)', 
+                    marginBottom: 'var(--space-1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-1)'
+                  }}>
+                    🔴 Real-time animation active
+                  </div>
+                )}
+                {realtimeRoutePolylines.length > 0 && (
+                  <div style={{ 
+                    fontSize: 'var(--text-xs)', 
+                    color: 'var(--secondary-green)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-1)'
+                  }}>
+                    📊 {realtimeRoutePolylines.length} route(s) visible
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div style={{ marginTop: "16px" }}>
-        <div style={cardStyle}>
-          <h3 style={sectionTitleStyle}>Emergency List</h3>
-          <EmergencyList
-            emergencies={filteredEmergencies}
-            onSelect={setSelectedEmergency}
-            selectedId={activeSelection?.request_id}
-            onDispatch={handleDispatch}
-            onComplete={handleComplete}
-            availableByType={availableByType}
-          />
+      {/* Emergency List Section */}
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <div className="card" style={{ 
+          border: '1px solid var(--gray-200)',
+          borderRadius: 'var(--radius-xl)',
+          overflow: 'hidden'
+        }}>
+          <div style={{ 
+            padding: 'var(--space-6)',
+            backgroundColor: 'var(--gray-50)',
+            borderBottom: '1px solid var(--gray-200)'
+          }}>
+            <h3 style={{ 
+              ...sectionTitleStyle,
+              fontSize: 'var(--text-lg)',
+              fontWeight: 'var(--font-semibold)',
+              color: 'var(--text-primary)',
+              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
+            }}>
+              🚨 Emergency Management
+            </h3>
+          </div>
+          <div style={{ padding: 'var(--space-6)' }}>
+            <EmergencyList
+              emergencies={filteredEmergencies}
+              onSelect={setSelectedEmergency}
+              selectedId={activeSelection?.request_id}
+              onDispatch={handleDispatch}
+              onComplete={handleComplete}
+              availableByType={availableByType}
+            />
+          </div>
         </div>
       </div>
     </div>

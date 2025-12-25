@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from models import Emergency, Unit, db
 from datetime import datetime
 from routes.notification_routes import create_emergency_notification, create_system_notification
+from events import socketio
 
 emergency_bp = Blueprint('emergency_bp', __name__)
 
@@ -44,6 +45,27 @@ def add_emergency():
     # Create notification for new emergency
     create_emergency_notification(new_emergency, 'created')
     create_system_notification(f"New {emergency_type} emergency reported at location ({latitude}, {longitude})", 'info')
+
+    # Emit real-time event for new emergency
+    emergency_data = {
+        'request_id': new_emergency.request_id,
+        'emergency_type': new_emergency.emergency_type,
+        'latitude': new_emergency.latitude,
+        'longitude': new_emergency.longitude,
+        'status': new_emergency.status,
+        'approved_by': new_emergency.approved_by,
+        'assigned_unit': new_emergency.assigned_unit,
+        'created_at': new_emergency.created_at.isoformat() if new_emergency.created_at else None
+    }
+    
+    # Broadcast to all connected clients
+    socketio.emit('emergency_created', emergency_data)
+    socketio.emit('emergency_update', {
+        'action': 'created',
+        'emergency': emergency_data
+    }, room='unit_tracking')
+    
+    print(f"🔴 Real-time: New emergency #{new_emergency.request_id} broadcasted to all clients")
 
     return jsonify({'message': 'Emergency added', 'request_id': new_emergency.request_id})
 

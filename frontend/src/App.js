@@ -7,6 +7,7 @@ import NotificationPanel from "./components/NotificationPanel";
 import AddEmergency from "./components/AddEmergency";
 import Dashboard from "./pages/Dashboard";
 import UnitsTracking from "./pages/UnitsTracking";
+import "./styles/design-system.css";
 
 // Make toast functions globally available
 window.showToast = (toast) => toastManager.addToast(toast);
@@ -20,64 +21,122 @@ function App() {
   return (
     <NotificationProvider userId={1}> {/* Default user ID for demo */}
       <Router>
-        <div style={{ minHeight: '100vh', backgroundColor: '#f6f8fb' }}>
+        <div className="min-vh-100" style={{ minHeight: '100vh', backgroundColor: 'var(--bg-secondary)' }}>
           {/* Header with Navigation and Notification Badge */}
-          <div style={{
-            backgroundColor: 'white',
-            padding: '16px 24px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          <header className="sticky-top" style={{
+            backgroundColor: 'var(--bg-primary)',
+            padding: 'var(--space-4) var(--space-6)',
+            boxShadow: 'var(--shadow-md)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             position: 'sticky',
             top: 0,
-            zIndex: 100
+            zIndex: 'var(--z-sticky)',
+            borderBottom: '1px solid var(--gray-200)'
           }}>
-            <nav style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+            {/* Logo/Brand */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                background: 'linear-gradient(135deg, var(--primary-blue), var(--primary-blue-light))',
+                borderRadius: 'var(--radius-lg)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 'var(--text-lg)',
+                color: 'var(--text-inverse)',
+                boxShadow: 'var(--shadow-md)'
+              }}>
+                🚨
+              </div>
+              <div>
+                <h1 style={{ 
+                  margin: 0, 
+                  fontSize: 'var(--text-xl)', 
+                  fontWeight: 'var(--font-bold)',
+                  color: 'var(--text-primary)',
+                  lineHeight: 1.2
+                }}>
+                  EROS
+                </h1>
+                <p style={{ 
+                  margin: 0, 
+                  fontSize: 'var(--text-xs)', 
+                  color: 'var(--text-muted)',
+                  fontWeight: 'var(--font-medium)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em'
+                }}>
+                  Emergency Response System
+                </p>
+              </div>
+            </div>
+
+            {/* Navigation */}
+            <nav style={{ 
+              display: 'flex', 
+              gap: 'var(--space-2)', 
+              alignItems: 'center',
+              backgroundColor: 'var(--gray-50)',
+              padding: 'var(--space-2)',
+              borderRadius: 'var(--radius-xl)',
+              border: '1px solid var(--gray-200)'
+            }}>
               <Link 
                 to="/" 
+                className="nav-link"
                 style={{
                   textDecoration: 'none',
-                  color: '#374151',
-                  fontWeight: '500',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  transition: 'background-color 0.2s'
+                  color: 'var(--text-secondary)',
+                  fontWeight: 'var(--font-medium)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  borderRadius: 'var(--radius-lg)',
+                  transition: 'all var(--transition-fast)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  fontSize: 'var(--text-sm)'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                Reporter
+                📝 Reporter
               </Link>
               <Link 
                 to="/dashboard" 
+                className="nav-link"
                 style={{
                   textDecoration: 'none',
-                  color: '#374151',
-                  fontWeight: '500',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  transition: 'background-color 0.2s'
+                  color: 'var(--text-secondary)',
+                  fontWeight: 'var(--font-medium)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  borderRadius: 'var(--radius-lg)',
+                  transition: 'all var(--transition-fast)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  fontSize: 'var(--text-sm)'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                Dashboard
+                📊 Dashboard
               </Link>
               <Link 
                 to="/units-tracking" 
+                className="nav-link"
                 style={{
                   textDecoration: 'none',
-                  color: '#374151',
-                  fontWeight: '500',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  transition: 'background-color 0.2s'
+                  color: 'var(--text-secondary)',
+                  fontWeight: 'var(--font-medium)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  borderRadius: 'var(--radius-lg)',
+                  transition: 'all var(--transition-fast)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  fontSize: 'var(--text-sm)'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                Units Tracking
+                📍 Units Tracking
               </Link>
             </nav>
             
@@ -86,16 +145,33 @@ function App() {
               onClick={() => setNotificationPanelOpen(true)}
               showText={false}
             />
-          </div>
+          </header>
 
           {/* Main Content */}
-          <div style={{ flex: 1 }}>
+          <main style={{ flex: 1 }}>
             <Routes>
               <Route path="/" element={<AddEmergency />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/units-tracking" element={<UnitsTracking />} />
             </Routes>
-          </div>
+          </main>
+
+          {/* Footer */}
+          <footer style={{
+            backgroundColor: 'var(--bg-primary)',
+            borderTop: '1px solid var(--gray-200)',
+            padding: 'var(--space-6)',
+            textAlign: 'center',
+            marginTop: 'auto'
+          }}>
+            <p style={{ 
+              margin: 0, 
+              color: 'var(--text-muted)',
+              fontSize: 'var(--text-sm)'
+            }}>
+              © 2024 EROS - Emergency Response Operating System | Built with ❤️ for public safety
+            </p>
+          </footer>
         </div>
 
         {/* Toast Notifications */}

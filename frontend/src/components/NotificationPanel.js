@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNotifications } from '../hooks/useNotifications';
 
 const NotificationPanel = ({ isOpen, onClose }) => {
@@ -12,6 +12,52 @@ const NotificationPanel = ({ isOpen, onClose }) => {
   } = useNotifications();
 
   const [filter, setFilter] = useState('all'); // 'all', 'unread', 'emergency', 'unit', 'system'
+  const panelRef = useRef(null);
+
+  // Handle click outside to close
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (panelRef.current && !panelRef.current.contains(event.target)) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isOpen, onClose]);
+
+  // Handle ESC key to close
+  useEffect(() => {
+    const handleEscapeKey = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscapeKey);
+      return () => {
+        document.removeEventListener('keydown', handleEscapeKey);
+      };
+    }
+  }, [isOpen, onClose]);
+
+  // Prevent body scroll when panel is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -57,20 +103,39 @@ const NotificationPanel = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div 
-      style={{
-        position: 'fixed',
-        top: 0,
-        right: 0,
-        width: '400px',
-        height: '100vh',
-        backgroundColor: 'white',
-        boxShadow: '-4px 0 20px rgba(0,0,0,0.1)',
-        zIndex: 1000,
-        display: 'flex',
-        flexDirection: 'column'
-      }}
-    >
+    <>
+      {/* Backdrop overlay */}
+      <div 
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+          zIndex: 999,
+          animation: 'fadeIn 0.3s ease-out forwards'
+        }}
+        onClick={onClose}
+      />
+      
+      {/* Panel */}
+      <div 
+        ref={panelRef}
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          width: '400px',
+          height: '100vh',
+          backgroundColor: 'white',
+          boxShadow: '-4px 0 20px rgba(0,0,0,0.1)',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          animation: 'slideIn 0.3s ease-out forwards'
+        }}
+      >
       {/* Header */}
       <div style={{
         padding: '20px',
@@ -272,7 +337,8 @@ const NotificationPanel = ({ isOpen, onClose }) => {
           ))
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
