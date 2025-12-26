@@ -67,8 +67,8 @@ function AddEmergency() {
 
     setIsSubmitting(true);
     try {
-      const [lat, lng] = position;
-      const res = await api.post("/emergencies", {
+        const [lat, lng] = position;
+      const res = await api.post("/api/emergencies", {
         emergency_type: type,
         latitude: lat,
         longitude: lng,

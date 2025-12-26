@@ -90,24 +90,48 @@ export const useWebSocket = () => {
       setConnectionError('Failed to reconnect to server');
     });
 
-    // Unit location update handler with validation
+    // Unit location update handler with route progress integration
     socket.on('unit_location_update', (data) => {
       console.log('📍 Unit location update received:', data);
       
       // Validate data structure
       if (data && data.unit_id && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        const locationData = {
+          latitude: data.latitude,
+          longitude: data.longitude,
+          timestamp: data.timestamp,
+          status: data.status,
+          progress: data.progress || 0,
+          emergencyId: data.emergency_id,
+          routeData: data.route_data,
+          ...data
+        };
+        
         setUnitLocations(prev => ({
           ...prev,
-          [data.unit_id]: {
-            latitude: data.latitude,
-            longitude: data.longitude,
-            timestamp: data.timestamp,
-            status: data.status,
-            progress: data.progress,
-            emergencyId: data.emergency_id,
-            ...data
-          }
+          [data.unit_id]: locationData
         }));
+        
+        // 🆕 INTEGRATE: RouteMovementController for route-constrained updates
+        if (data.route_data && data.progress !== undefined) {
+          try {
+            // This would integrate with the RouteMovementController
+            // For now, we'll emit a custom event that components can listen to
+            window.dispatchEvent(new CustomEvent('unitLocationUpdate', {
+              detail: {
+                unitId: data.unit_id,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                progress: data.progress,
+                routeData: data.route_data,
+                emergencyId: data.emergency_id,
+                rawData: data
+              }
+            }));
+          } catch (error) {
+            console.error('Error dispatching unit location update event:', error);
+          }
+        }
       } else {
         console.warn('⚠️ Invalid unit location data received:', data);
       }

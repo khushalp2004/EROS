@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -7,6 +7,11 @@ import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
+// 🆕 IMPORT: RouteMovementController for route-constrained updates
+import RouteMovementController from '../utils/RouteMovementController';
+// 🆕 IMPORT: RouteGeometryManager for progress-based position calculations
+import RouteGeometryManager from '../utils/RouteGeometryManager';
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
@@ -239,10 +244,34 @@ function MapAutoCenter({ center }) {
   return null;
 }
 
-function AnimatedPolyline({ positions, progress = 1, color = "#0080ff", originalPositions = [], serviceType = null, unitId = null }) {
-  // Calculate how much of the polyline to show based on progress
-  const visiblePositions = positions.slice(0, Math.max(2, Math.floor(positions.length * progress)));
-  
+/**
+ * AnimatedPolyline Component
+ * 
+ * Refactored to use OSRM geometry + progress-based animation:
+ * - OSRM geometry → polyline (fixed) + progress (dynamic) → animation calculated from both
+ * 
+ * Props:
+ * - positions: Array of [lat, lng] coordinates from OSRM route geometry
+ * - progress: Float (0-1) representing progress along the route
+ * - color: Route color for visualization
+ * - originalPositions: Full route coordinates (optional, defaults to positions)
+ * - serviceType: Service type for icon selection
+ * - unitId: Unit identifier for tracking
+ * - routeMovementController: Controller for route-constrained updates (optional)
+ * - routeGeometryManager: Geometry manager for progress calculations (optional)
+ * - routeId: Route identifier for geometry manager lookup (optional)
+ */
+function AnimatedPolyline({ 
+  positions, 
+  progress = 1, 
+  color = "#0080ff", 
+  originalPositions = [], 
+  serviceType = null, 
+  unitId = null, 
+  routeMovementController = null,
+  routeGeometryManager = null,
+  routeId = null
+}) {
   // Get service emoji based on service type
   const getServiceEmoji = () => {
     switch (serviceType) {
@@ -253,44 +282,126 @@ function AnimatedPolyline({ positions, progress = 1, color = "#0080ff", original
     }
   };
 
-  // Calculate emoji position (middle of route)
+  // 🆕 CALCULATE: Unit marker position at progress point using OSRM geometry
+  const getUnitMarkerPosition = () => {
+    // First try routeMovementController (existing logic)
+    if (routeMovementController && unitId) {
+      try {
+        const controllerPosition = routeMovementController.getUnitMarkerPosition(unitId.toString());
+        if (controllerPosition) return controllerPosition;
+      } catch (error) {
+        console.warn('Error getting unit marker position from controller:', error);
+      }
+    }
+    
+    // 🆕 NEW: Calculate position using RouteGeometryManager with progress
+    if (routeGeometryManager && routeId && positions.length > 0) {
+      try {
+        // Validate progress
+        if (progress < 0 || progress > 1 || isNaN(progress)) {
+          console.warn(`Invalid progress value: ${progress}. Using 0.`);
+          return positions[0]; // Start of route
+        }
+        
+        // Calculate position at progress
+        const calculatedPosition = routeGeometryManager.getPositionAtProgress(routeId, progress);
+        if (calculatedPosition) return calculatedPosition;
+        
+        // Fallback: interpolate directly from positions array
+        const index = Math.floor(progress * (positions.length - 1));
+        return positions[Math.max(0, Math.min(positions.length - 1, index))];
+      } catch (error) {
+        console.warn('Error calculating position from geometry manager:', error);
+      }
+    }
+    
+    // Final fallback: use positions array directly
+    if (positions.length > 0) {
+      const index = Math.floor(progress * (positions.length - 1));
+      return positions[Math.max(0, Math.min(positions.length - 1, index))];
+    }
+    
+    return null;
+  };
+
+  // Calculate emoji position (middle of route for context)
   const getEmojiPosition = () => {
     if (positions.length === 0) return null;
     const emojiIndex = Math.floor(positions.length / 2);
     return positions[emojiIndex];
   };
 
+  // Determine final positions
+  const fullRoutePositions = originalPositions.length > 0 ? originalPositions : positions;
+  const unitMarkerPosition = getUnitMarkerPosition();
   const emojiPosition = getEmojiPosition();
   
   return (
     <>
-      {/* Draw the full route as a faint background */}
-      {originalPositions.length > 1 && (
+      {/* 🆕 FULL ROUTE: Draw complete OSRM geometry as main route */}
+      {fullRoutePositions.length > 1 && (
         <Polyline
-          positions={originalPositions}
+          positions={fullRoutePositions}
           pathOptions={{ 
             color: color, 
-            weight: 2, 
-            opacity: 0.2, 
-            dashArray: "3 3" 
-          }}
-        />
-      )}
-      {/* Draw the animated progress */}
-      {visiblePositions.length > 1 && (
-        <Polyline
-          positions={visiblePositions}
-          pathOptions={{ 
-            color: color, 
-            weight: 6, 
-            opacity: 0.8,
-            className: "animated-route enhanced-route-line"
+            weight: 4, 
+            opacity: 0.7,
+            className: "animated-route full-route-line"
           }}
         />
       )}
       
-      {/* Service emoji on route */}
-      {serviceType && emojiPosition && (
+      {/* 🆕 ENHANCED: Unit marker at progress position */}
+      {unitMarkerPosition && (
+        <Marker
+          position={unitMarkerPosition}
+          icon={L.divIcon({
+            className: "unit-marker-at-progress",
+            html: `
+              <div style="
+                position: relative;
+                width: 32px;
+                height: 32px;
+                background: ${color};
+                border: 3px solid white;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 16px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+                z-index: 1000;
+                animation: pulse 2s infinite;
+              ">
+                ${getServiceEmoji()}
+              </div>
+              <style>
+                @keyframes pulse {
+                  0% { transform: scale(1); }
+                  50% { transform: scale(1.1); }
+                  100% { transform: scale(1); }
+                }
+              </style>
+            `,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          })}
+          zIndexOffset={1000}
+        >
+          <Popup>
+            <div>
+              <strong>🚑 Unit {unitId || 'Unknown'}</strong><br/>
+              <strong>Progress:</strong> {(progress * 100).toFixed(1)}%<br/>
+              <strong>Status:</strong> En Route<br/>
+              <strong>Service:</strong> {serviceType || 'Unknown'}<br/>
+              <strong>Animation:</strong> OSRM Geometry + Progress
+            </div>
+          </Popup>
+        </Marker>
+      )}
+      
+      {/* Service emoji on route (static, for context) - only if no unit marker */}
+      {serviceType && emojiPosition && !unitMarkerPosition && (
         <Marker
           position={emojiPosition}
           icon={L.divIcon({
@@ -308,7 +419,7 @@ function AnimatedPolyline({ positions, progress = 1, color = "#0080ff", original
                 justify-content: center;
                 font-size: 14px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                z-index: 1000;
+                z-index: 800;
               ">
                 ${getServiceEmoji()}
               </div>
@@ -321,7 +432,9 @@ function AnimatedPolyline({ positions, progress = 1, color = "#0080ff", original
           <Popup>
             <div>
               <strong>🚩 {serviceType} Route</strong><br/>
-              <small>Unit {unitId}</small>
+              <small>Unit {unitId || 'Unknown'}</small><br/>
+              <small>Progress: {(progress * 100).toFixed(1)}%</small><br/>
+              <small>Animation: OSRM Geometry + Progress</small>
             </div>
           </Popup>
         </Marker>
@@ -331,11 +444,97 @@ function AnimatedPolyline({ positions, progress = 1, color = "#0080ff", original
 }
 
 function MapView({ markers, center, polylines = [] }) {
+  // 🆕 INITIALIZE: RouteMovementController for route-constrained updates
+  const routeMovementControllerRef = useRef(null);
+  const routeGeometryManagerRef = useRef(null);
+  const [isControllerReady, setIsControllerReady] = React.useState(false);
+
+  // Initialize RouteMovementController and RouteGeometryManager
+  useEffect(() => {
+    if (!routeMovementControllerRef.current) {
+      routeMovementControllerRef.current = new RouteMovementController();
+      
+      // Setup WebSocket integration
+      routeMovementControllerRef.current.setupWebSocketIntegration();
+      
+      setIsControllerReady(true);
+      console.log('🛣️ RouteMovementController initialized in MapView');
+    }
+
+    // Initialize RouteGeometryManager for progress-based calculations
+    if (!routeGeometryManagerRef.current) {
+      routeGeometryManagerRef.current = new RouteGeometryManager();
+      console.log('📐 RouteGeometryManager initialized in MapView');
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (routeMovementControllerRef.current) {
+        routeMovementControllerRef.current.cleanupWebSocketIntegration();
+      }
+    };
+  }, []);
+
   const defaultCenter = [19.076, 72.8777];
   const mapCenter = center || (markers.length === 1
     ? [markers[0].latitude, markers[0].longitude]
     : defaultCenter);
   const mapZoom = markers.length === 1 ? 14 : 12;
+
+  // 🆕 ENHANCED: Get enhanced polylines with RouteMovementController data
+  const enhancedPolylines = React.useMemo(() => {
+    if (!isControllerReady || !routeMovementControllerRef.current) {
+      return polylines;
+    }
+
+    return polylines.map(polyline => {
+      const unitId = polyline.unitId?.toString();
+      
+      if (unitId) {
+        // Get polyline data from RouteMovementController
+        const controllerPolylineData = routeMovementControllerRef.current.getPolylineDataForUnit(unitId);
+        
+        if (controllerPolylineData) {
+          return {
+            ...polyline,
+            ...controllerPolylineData,
+            // Use controller data but preserve original props if they're more specific
+            positions: controllerPolylineData.positions,
+            progress: polyline.progress !== undefined ? polyline.progress : controllerPolylineData.progress,
+            color: polyline.color || controllerPolylineData.color,
+            originalPositions: polyline.originalPositions || controllerPolylineData.originalPositions
+          };
+        }
+      }
+      
+      return polyline;
+    });
+  }, [polylines, isControllerReady]);
+
+  // 🆕 ENHANCED: Get unit markers with RouteMovementController positions
+  const enhancedMarkers = React.useMemo(() => {
+    if (!isControllerReady || !routeMovementControllerRef.current) {
+      return markers;
+    }
+
+    return markers.map(marker => {
+      if (marker.unit_id && !marker.isSimulated) {
+        // Get enhanced position from RouteMovementController
+        const controllerPosition = routeMovementControllerRef.current.getUnitMarkerPosition(marker.unit_id.toString());
+        
+        if (controllerPosition) {
+          return {
+            ...marker,
+            latitude: controllerPosition[0],
+            longitude: controllerPosition[1],
+            isRouteConstrained: true
+          };
+        }
+      }
+      
+      return marker;
+    });
+  }, [markers, isControllerReady]);
 
   if (!markers || markers.length === 0) {
     return <p style={{ marginTop: "10px" }}>No locations to display.</p>;
@@ -360,11 +559,22 @@ function MapView({ markers, center, polylines = [] }) {
           .leaflet-marker-icon.enhanced-emergency-icon {
             filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
           }
+          
+          /* 🆕 ENHANCED: Route-constrained unit marker styles */
+          .unit-marker-at-progress {
+            animation: unitMarkerPulse 2s infinite;
+          }
+          
+          @keyframes unitMarkerPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+          }
         `}
       </style>
       
       <MapContainer
-        key={`${mapCenter[0]}-${mapCenter[1]}-${mapZoom}-${markers.length}`}
+        key={`${mapCenter[0]}-${mapCenter[1]}-${mapZoom}-${enhancedMarkers.length}`}
         center={mapCenter}
         zoom={mapZoom}
         style={{ height: "500px" }}
@@ -373,7 +583,7 @@ function MapView({ markers, center, polylines = [] }) {
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {markers.map((m, i) => {
+        {enhancedMarkers.map((m, i) => {
           // Determine marker type and select appropriate icon
           const isUnit = m.unit_id !== undefined;
           const isEmergency = m.request_id !== undefined && !isUnit;
@@ -400,12 +610,13 @@ function MapView({ markers, center, polylines = [] }) {
               key={i}
               position={[m.latitude, m.longitude]}
               icon={markerIcon}
-              zIndexOffset={m.isSimulated ? 500 : 0}
+              zIndexOffset={m.isSimulated ? 500 : (m.isRouteConstrained ? 1000 : 0)}
             >
               <Popup>
                 {isUnit ? (
                   <div>
-                    <strong>🚑 Unit {m.unit_id}</strong><br/>
+                    <strong>🚑 Unit {m.unit_id}</strong>
+                    {m.isRouteConstrained && <span style={{ color: '#007bff' }}> 🛣️</span>}<br/>
                     <strong>Type:</strong> {m.service_type}<br/>
                     <strong>Status:</strong> 
                     <span style={{ 
@@ -417,6 +628,11 @@ function MapView({ markers, center, polylines = [] }) {
                       {m.status}
                     </span><br/>
                     <strong>Location:</strong> {m.latitude.toFixed(4)}, {m.longitude.toFixed(4)}
+                    {m.isRouteConstrained && (
+                      <>
+                        <br/><strong>Mode:</strong> <span style={{ color: '#007bff' }}>Route-Constrained</span>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div>
@@ -441,7 +657,7 @@ function MapView({ markers, center, polylines = [] }) {
             </Marker>
           );
         })}
-        {polylines.map((pl, idx) => (
+        {enhancedPolylines.map((pl, idx) => (
           <AnimatedPolyline
             key={idx}
             positions={pl.positions}
@@ -450,6 +666,9 @@ function MapView({ markers, center, polylines = [] }) {
             originalPositions={pl.originalPositions}
             serviceType={pl.serviceType}
             unitId={pl.unitId}
+            routeMovementController={routeMovementControllerRef.current}
+            routeGeometryManager={routeGeometryManagerRef.current}
+            routeId={pl.routeId || `route-${pl.unitId}`}
           />
         ))}
       </MapContainer>

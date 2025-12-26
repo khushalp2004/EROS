@@ -6,11 +6,13 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import RouteAnimationManager from '../utils/RouteAnimationManager.js';
+import RouteMovementController from '../utils/RouteMovementController.js';
 
 export const useRouteFollowing = (map, options = {}) => {
   // Initialize RouteAnimationManager
   const animationManagerRef = useRef(null);
   const gpsSubscriptionsRef = useRef(new Map());
+  const routeMovementControllerRef = useRef(null);
 
   // State management
   const [isInitialized, setIsInitialized] = useState(false);
@@ -34,8 +36,12 @@ export const useRouteFollowing = (map, options = {}) => {
     if (map && !animationManagerRef.current) {
       try {
         animationManagerRef.current = new RouteAnimationManager(map, config);
+        
+        // 🔧 ENHANCED: Initialize RouteMovementController for WebSocket integration
+        routeMovementControllerRef.current = new RouteMovementController();
+        
         setIsInitialized(true);
-        console.log('🎬 Route following system initialized');
+        console.log('🎬 Route following system initialized with WebSocket integration');
       } catch (error) {
         console.error('❌ Failed to initialize route following system:', error);
       }
@@ -46,8 +52,15 @@ export const useRouteFollowing = (map, options = {}) => {
       if (animationManagerRef.current) {
         animationManagerRef.current.destroy();
         animationManagerRef.current = null;
-        setIsInitialized(false);
       }
+      
+      // 🔧 ENHANCED: Cleanup RouteMovementController
+      if (routeMovementControllerRef.current) {
+        routeMovementControllerRef.current.cleanupWebSocketIntegration();
+        routeMovementControllerRef.current = null;
+      }
+      
+      setIsInitialized(false);
     };
   }, [map, config]);
 
@@ -249,7 +262,33 @@ export const useRouteFollowing = (map, options = {}) => {
    * @returns {Object} Route status
    */
   const getRouteStatus = useCallback((routeId) => {
-    return routeStatuses[routeId] || null;
+    const status = routeStatuses[routeId] || null;
+    
+    // Enhanced status with position information
+    if (status && status.lastPosition) {
+      return {
+        ...status,
+        hasPosition: true,
+        position: status.lastPosition
+      };
+    }
+    
+    // If no status but route exists, try to get position directly
+    if (!status && animationManagerRef.current) {
+      const routeState = animationManagerRef.current.activeRoutes.get(routeId);
+      if (routeState && routeState.lastPosition) {
+        return {
+          routeId,
+          lastPosition: routeState.lastPosition,
+          hasPosition: true,
+          position: routeState.lastPosition,
+          isAnimating: routeState.isAnimating,
+          progress: routeState.progress
+        };
+      }
+    }
+    
+    return status;
   }, [routeStatuses]);
 
   /**
@@ -316,6 +355,107 @@ export const useRouteFollowing = (map, options = {}) => {
     );
   }, [isInitialized]);
 
+  /**
+   * 🔧 ENHANCED: Handle WebSocket location update with OSRM integration
+   * @param {Object} locationUpdate - WebSocket location update data
+   */
+  const handleWebSocketUpdate = useCallback((locationUpdate) => {
+    try {
+      const { unit_id, latitude, longitude, progress, route_data, emergency_id, route_geometry, osrm_route_id } = locationUpdate;
+      
+      if (!unit_id) {
+        console.warn('⚠️ Cannot process WebSocket update: missing unitId');
+        return;
+      }
+
+      const routeId = `route-${unit_id}`;
+      
+      // 🔧 ENHANCED: Use RouteMovementController for better OSRM integration
+      if (routeMovementControllerRef.current) {
+        const movementResult = routeMovementControllerRef.current.handleWebSocketUpdate(locationUpdate);
+        
+        if (movementResult) {
+          console.log(`📡 WebSocket update processed for Unit ${unit_id}:`, {
+            progress: (movementResult.progress * 100).toFixed(1) + '%',
+            hasOSRMData: movementResult.hasOSRMData,
+            osrmRouteId: movementResult.osrmRouteId,
+            source: movementResult.source
+          });
+        }
+      }
+      
+      // 🔧 ENHANCED: Use OSRM data directly if available
+      let routeDataToUse = null;
+      if (route_geometry) {
+        // Use full OSRM geometry
+        routeDataToUse = {
+          geometry: JSON.parse(route_geometry),
+          distance: locationUpdate.route_distance,
+          duration: locationUpdate.route_duration
+        };
+        console.log(`🎯 Using direct OSRM geometry for Unit ${unit_id}`);
+      } else if (route_data) {
+        // Fallback to route_data format
+        routeDataToUse = route_data;
+        console.log(`🎯 Using route_data for Unit ${unit_id}`);
+      }
+      
+      // Update progress tracking with enhanced data
+      updateProgress(routeId, progress || 0);
+      
+      // Register route if not already registered and route data is available
+      if (routeDataToUse && !activeRoutes.has(routeId)) {
+        try {
+          registerRoute(routeDataToUse, routeId, {
+            vehicleType: 'AMBULANCE',
+            autoStart: true,
+            enableGPSSnapping: true,
+            useDirectOSRM: !!route_geometry,
+            osrmRouteId: osrm_route_id,
+            source: 'websocket'
+          });
+          
+          console.log(`🛣️ Route registered from WebSocket update: ${routeId}`, {
+            hasOSRMData: !!route_geometry,
+            osrmRouteId: osrm_route_id
+          });
+        } catch (error) {
+          console.error(`❌ Failed to register route from WebSocket: ${routeId}`, error);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error handling WebSocket update:', error);
+    }
+  }, [activeRoutes, registerRoute, updateProgress]);
+
+  /**
+   * 🔧 ENHANCED: Get polyline data from RouteMovementController
+   * @returns {Array} Array of polyline data objects
+   */
+  const getAllPolylineData = useCallback(() => {
+    if (!routeMovementControllerRef.current) {
+      console.warn('⚠️ RouteMovementController not available for polyline data');
+      return [];
+    }
+    
+    const polylineData = routeMovementControllerRef.current.getAllPolylineData();
+    console.log(`📊 Generated ${polylineData.length} polyline data objects from WebSocket integration`);
+    return polylineData;
+  }, []);
+
+  /**
+   * 🔧 ENHANCED: Get enhanced route status
+   * @param {string} unitId - Unit identifier
+   * @returns {Object|null} Enhanced route status
+   */
+  const getEnhancedRouteStatus = useCallback((unitId) => {
+    if (!routeMovementControllerRef.current) {
+      return null;
+    }
+    
+    return routeMovementControllerRef.current.getEnhancedRouteStatus(unitId);
+  }, []);
+
   // API surface
   return {
     // State
@@ -343,6 +483,11 @@ export const useRouteFollowing = (map, options = {}) => {
     subscribeToGPS,
     updateFromGPS,
 
+    // 🔧 ENHANCED: WebSocket integration
+    handleWebSocketUpdate,
+    getAllPolylineData,
+    getEnhancedRouteStatus,
+
     // Utility functions
     getRouteStatus,
     getPositionAtProgress,
@@ -352,7 +497,8 @@ export const useRouteFollowing = (map, options = {}) => {
     emergencyStop,
 
     // Managers (for advanced usage)
-    animationManager: animationManagerRef.current
+    animationManager: animationManagerRef.current,
+    routeMovementController: routeMovementControllerRef.current
   };
 };
 

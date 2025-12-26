@@ -3,6 +3,16 @@ import api from "../api";
 import RealtimeMapView from "../components/RealtimeMapView";
 import EmergencyList from "../components/EmergencyList";
 import { useWebSocketManager, connectionManager } from "../hooks/useWebSocketManager";
+import { 
+  isEmergency, 
+  isUnit, 
+  getAssignedUnit, 
+  getUnitId, 
+  safeGet, 
+  validateEmergency,
+  validateUnit,
+  logDataError
+} from "../utils/DataValidationUtils";
 
 function Dashboard() {
   const [units, setUnits] = useState([]);
@@ -61,7 +71,8 @@ function Dashboard() {
 
       // Show appropriate message based on action
       if (action === 'assigned') {
-        showToast(`Emergency #${emergency.request_id} assigned to Unit ${emergency.assigned_unit}`, 'success', 3000);
+        const assignedUnitId = getAssignedUnit(emergency);
+        showToast(`Emergency #${emergency.request_id} assigned to Unit ${assignedUnitId}`, 'success', 3000);
       } else if (action === 'completed') {
         showToast(`Emergency #${emergency.request_id} completed`, 'success', 3000);
       }
@@ -152,8 +163,45 @@ function Dashboard() {
     const activeSims = Object.keys(unitLocations).length;
     const assignedEmergencies = emergencies.filter(e => e.status === 'ASSIGNED');
     const estimatedArrivals = assignedEmergencies.map(emergency => {
-      const unit = units.find(u => u.unit_id === emergency.assigned_unit);
-      if (!unit) return null;
+      // Validate emergency object
+      const emergencyValidation = validateEmergency(emergency);
+      if (!emergencyValidation.isValid) {
+        logDataError('Dashboard.calculateSimulationStats', emergency, 'process emergency');
+        return null;
+      }
+      
+      // Safely get assigned unit ID
+      const assignedUnitId = getAssignedUnit(emergency);
+      if (!assignedUnitId) {
+        console.warn('⚠️ No assigned unit for emergency:', emergency.request_id);
+        return null;
+      }
+      
+      // Find the unit with proper validation
+      const unit = units.find(u => {
+        const unitValidation = validateUnit(u);
+        if (!unitValidation.isValid) {
+          logDataError('Dashboard.calculateSimulationStats', u, 'validate unit');
+          return false;
+        }
+        return u.unit_id === assignedUnitId;
+      });
+      
+      if (!unit) {
+        console.warn(`⚠️ Unit ${assignedUnitId} not found for emergency ${emergency.request_id}`);
+        return null;
+      }
+      
+      // Validate unit has required coordinates
+      if (unit.latitude === undefined || unit.longitude === undefined) {
+        logDataError('Dashboard.calculateSimulationStats', unit, 'unit missing coordinates');
+        return null;
+      }
+      
+      if (emergency.latitude === undefined || emergency.longitude === undefined) {
+        logDataError('Dashboard.calculateSimulationStats', emergency, 'emergency missing coordinates');
+        return null;
+      }
       
       const distance = calculateDistance(
         unit.latitude, unit.longitude,
@@ -163,7 +211,7 @@ function Dashboard() {
       const estimatedMinutes = Math.ceil((distance / 30) * 60);
       
       return {
-        unitId: emergency.assigned_unit,
+        unitId: assignedUnitId,
         emergencyId: emergency.request_id,
         distance: distance.toFixed(1),
         etaMinutes: estimatedMinutes
@@ -200,8 +248,8 @@ function Dashboard() {
     try {
       setLoading(true);
       const [resUnits, resEmergencies] = await Promise.all([
-        api.get("/authority/units"),
-        api.get("/authority/emergencies"),
+        api.get("/api/authority/units"),
+        api.get("/api/authority/emergencies"),
       ]);
       setUnits(resUnits.data);
       setEmergencies(resEmergencies.data);
@@ -278,10 +326,48 @@ function Dashboard() {
     const routes = [];
     
     emergencies
-      .filter((e) => e.status === "ASSIGNED" && e.assigned_unit)
-      .forEach((e) => {
-        const unit = units.find((u) => u.unit_id === e.assigned_unit);
-        if (!unit) return;
+      .filter((e) => {
+        // Validate emergency and check it's assigned
+        const emergencyValidation = validateEmergency(e);
+        if (!emergencyValidation.isValid) {
+          logDataError('Dashboard.routePolylines', e, 'filter emergency');
+          return false;
+        }
+        return e.status === "ASSIGNED" && getAssignedUnit(e);
+      })
+      .forEach((emergency) => {
+        // Safely get assigned unit ID
+        const assignedUnitId = getAssignedUnit(emergency);
+        if (!assignedUnitId) {
+          console.warn('⚠️ No assigned unit for emergency in routePolylines:', emergency.request_id);
+          return;
+        }
+        
+        // Find unit with validation
+        const unit = units.find((u) => {
+          const unitValidation = validateUnit(u);
+          if (!unitValidation.isValid) {
+            logDataError('Dashboard.routePolylines', u, 'validate unit');
+            return false;
+          }
+          return u.unit_id === assignedUnitId;
+        });
+        
+        if (!unit) {
+          console.warn(`⚠️ Unit ${assignedUnitId} not found for emergency ${emergency.request_id}`);
+          return;
+        }
+        
+        // Validate coordinates
+        if (unit.latitude === undefined || unit.longitude === undefined) {
+          logDataError('Dashboard.routePolylines', unit, 'unit missing coordinates');
+          return;
+        }
+        
+        if (emergency.latitude === undefined || emergency.longitude === undefined) {
+          logDataError('Dashboard.routePolylines', emergency, 'emergency missing coordinates');
+          return;
+        }
         
         // Use real-time location if available, otherwise use unit's current location
         const realtimeLocation = unitLocations[unit.unit_id];
@@ -289,14 +375,14 @@ function Dashboard() {
         const unitLon = realtimeLocation ? realtimeLocation.longitude : unit.longitude;
         
         routes.push({
-          id: `${unit.unit_id}-${e.request_id}`,
+          id: `${unit.unit_id}-${emergency.request_id}`,
           positions: [
             [unitLat, unitLon],
-            [e.latitude, e.longitude]
+            [emergency.latitude, emergency.longitude]
           ],
           color: getRouteColor(unit.service_type),
           unitId: unit.unit_id,
-          emergencyId: e.request_id,
+          emergencyId: emergency.request_id,
           serviceType: unit.service_type,
           isRealtime: !!realtimeLocation
         });
@@ -311,6 +397,9 @@ function Dashboard() {
     const polylines = routePolylines.map(route => {
       const routeData = routeCache[route.emergencyId]?.coords;
       const positions = routeData && routeData.length > 1 ? routeData : route.positions;
+      
+      // 🔧 ENHANCED: Get complete OSRM route data for accurate positioning
+      const osrmRouteData = routeCache[route.emergencyId]?.osrmData;
       
       // Calculate animation progress based on tracking mode
       let progress = 1;
@@ -336,7 +425,12 @@ function Dashboard() {
         color: route.color,
         isAnimated,
         serviceType: route.serviceType,
-        unitId: route.unitId
+        unitId: route.unitId,
+        // 🔧 ENHANCED: Pass complete OSRM route data
+        osrmRouteData,
+        routeGeometry: osrmRouteData ? { coordinates: positions.map(([lat, lon]) => [lon, lat]) } : null,
+        routeDistance: osrmRouteData?.distance,
+        routeDuration: osrmRouteData?.duration
       };
     });
     
@@ -355,31 +449,118 @@ function Dashboard() {
     return filteredPolylines;
   }, [routePolylines, routeCache, trackingMode, selectedEmergency]);
 
-  // Fetch realistic route polyline for assigned emergencies (OSRM public demo)
+  // Fetch cached route polyline from database for assigned emergencies
   useEffect(() => {
-    const assigned = emergencies.filter((e) => e.status === "ASSIGNED" && e.assigned_unit);
-    const unitById = Object.fromEntries(units.map((u) => [u.unit_id, u]));
+    const assigned = emergencies.filter((e) => {
+      // Validate emergency
+      const emergencyValidation = validateEmergency(e);
+      if (!emergencyValidation.isValid) {
+        logDataError('Dashboard.routeCache', e, 'filter assigned emergencies');
+        return false;
+      }
+      return e.status === "ASSIGNED" && getAssignedUnit(e);
+    });
 
-    assigned.forEach((e) => {
-      if (routeCache[e.request_id]) return;
-      const unit = unitById[e.assigned_unit];
-      if (!unit) return;
+    assigned.forEach((emergency) => {
+      if (routeCache[emergency.request_id]) return;
 
-      const fetchRoute = async () => {
+      // Safely get assigned unit ID
+      const assignedUnitId = getAssignedUnit(emergency);
+      if (!assignedUnitId) {
+        console.warn('⚠️ No assigned unit for emergency in route cache:', emergency.request_id);
+        return;
+      }
+
+      const fetchCachedRoute = async () => {
         try {
-          const url = `https://router.project-osrm.org/route/v1/driving/${unit.longitude},${unit.latitude};${e.longitude},${e.latitude}?overview=full&geometries=geojson`;
-          const res = await fetch(url);
-          const data = await res.json();
-          const coords = data?.routes?.[0]?.geometry?.coordinates || [];
-          // coords from OSRM are [lon, lat]; convert to [lat, lon]
-          const latlng = coords.map(([lon, lat]) => [lat, lon]);
-          setRouteCache((prev) => ({ ...prev, [e.request_id]: { coords: latlng } }));
+          // Fetch cached route data from database via unit-routes endpoint
+          const response = await api.get(`/api/units/unit-routes/${assignedUnitId}`);
+          const routeData = response.data;
+
+          if (routeData?.route?.positions && routeData.route.positions.length > 1) {
+            // Use cached polyline_positions from database
+            const coords = routeData.route.positions; // Already [lat, lng] format
+
+            // Create OSRM-like data structure for compatibility
+            const osrmRouteData = {
+              geometry: { coordinates: coords.map(([lat, lng]) => [lng, lat]) }, // Convert to [lon, lat] for RouteGeometryManager
+              distance: routeData.route.total_distance || 0,
+              duration: routeData.route.estimated_duration || 0,
+              legs: [],
+              weight: 0,
+              weight_name: 'routability'
+            };
+
+            setRouteCache((prev) => ({
+              ...prev,
+              [emergency.request_id]: {
+                coords: coords,
+                osrmData: osrmRouteData
+              }
+            }));
+
+            console.log(`🛣️ Cached route loaded for Emergency ${emergency.request_id}:`, {
+              distance: `${(routeData.route.total_distance / 1000).toFixed(1)}km`,
+              duration: `${Math.round(routeData.route.estimated_duration / 60)}min`,
+              coordinates: coords.length,
+              source: 'database'
+            });
+          } else {
+            throw new Error('No cached route positions found');
+          }
         } catch (err) {
-          // fallback will use straight line
-          setRouteCache((prev) => ({ ...prev, [e.request_id]: { coords: [] } }));
+          console.warn(`⚠️ Failed to fetch cached route for emergency ${emergency.request_id}:`, err);
+          // Fallback: fetch fresh OSRM route
+          try {
+            const unit = units.find(u => u.unit_id === assignedUnitId);
+            if (!unit || unit.longitude === undefined || unit.latitude === undefined ||
+                emergency.longitude === undefined || emergency.latitude === undefined) {
+              setRouteCache((prev) => ({ ...prev, [emergency.request_id]: { coords: [], osrmData: null } }));
+              return;
+            }
+
+            const url = `https://router.project-osrm.org/route/v1/driving/${unit.longitude},${unit.latitude};${emergency.longitude},${emergency.latitude}?overview=full&geometries=geojson&steps=false`;
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data?.routes?.[0]) {
+              const route = data.routes[0];
+              const coords = route.geometry?.coordinates || [];
+              const latlng = coords.map(([lon, lat]) => [lat, lon]);
+
+              const osrmRouteData = {
+                geometry: { coordinates: coords },
+                distance: route.distance,
+                duration: route.duration,
+                legs: route.legs,
+                weight: route.weight,
+                weight_name: route.weight_name
+              };
+
+              setRouteCache((prev) => ({
+                ...prev,
+                [emergency.request_id]: {
+                  coords: latlng,
+                  osrmData: osrmRouteData
+                }
+              }));
+
+              console.log(`🛣️ Fallback OSRM route fetched for Emergency ${emergency.request_id}:`, {
+                distance: `${(route.distance / 1000).toFixed(1)}km`,
+                duration: `${Math.round(route.duration / 60)}min`,
+                coordinates: coords.length,
+                source: 'osrm_fallback'
+              });
+            } else {
+              throw new Error('No routes found in OSRM response');
+            }
+          } catch (fallbackErr) {
+            console.warn(`⚠️ Fallback OSRM failed for emergency ${emergency.request_id}:`, fallbackErr);
+            setRouteCache((prev) => ({ ...prev, [emergency.request_id]: { coords: [], osrmData: null } }));
+          }
         }
       };
-      fetchRoute();
+      fetchCachedRoute();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emergencies, units, routeCache]);
@@ -394,7 +575,7 @@ function Dashboard() {
 
   const handleDispatch = async (emergency) => {
     try {
-      await api.post(`/authority/dispatch/${emergency.request_id}`);
+      await api.post(`/api/authority/dispatch/${emergency.request_id}`);
       showToast("Emergency approved & dispatched", "success");
       await fetchData();
     } catch (err) {
@@ -408,7 +589,7 @@ function Dashboard() {
 
   const handleComplete = async (emergency) => {
     try {
-      await api.post(`/authority/complete/${emergency.request_id}`);
+      await api.post(`/api/authority/complete/${emergency.request_id}`);
       showToast("Marked complete; unit is now available", "success");
       await fetchData();
     } catch (err) {

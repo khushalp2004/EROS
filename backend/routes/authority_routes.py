@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from models.unit import Unit
 from models.emergency import Emergency
+from models.location import RouteCalculation
 from models import db
 from datetime import datetime
 from config import OSRM_BASE_URL
@@ -8,6 +9,8 @@ from routes.notification_routes import create_emergency_notification, create_uni
 from events import socketio
 import requests
 import math
+import json
+import polyline
 
 # Max allowed route distance (50 km) for approval/dispatch
 MAX_DISTANCE_METERS = 50_000
@@ -26,6 +29,60 @@ def haversine_m(lat1, lon1, lat2, lon2):
     a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
+
+
+# -------------------------
+# Helper: Phase 1 - Fetch full OSRM route with 245 waypoints
+# -------------------------
+def fetch_full_osrm_route(src_lat, src_lon, dst_lat, dst_lon, timeout=5):
+    """
+    Fetches complete OSRM route with full geometry and waypoints.
+    Returns (distance, duration, route_geometry, waypoints, polyline_positions)
+    """
+    url = f"{OSRM_BASE_URL}/route/v1/driving/{src_lon},{src_lat};{dst_lon},{dst_lat}"
+    params = {
+        "overview": "full",           # Get complete route geometry
+        "geometries": "polyline",     # Return polyline encoded geometry
+        "steps": "false",             # No turn-by-turn steps
+        "annotations": "false"        # No additional annotations
+    }
+    
+    try:
+        resp = requests.get(url, params=params, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        routes = data.get("routes") or []
+        if not routes:
+            raise ValueError("No route from OSRM")
+            
+        route = routes[0]
+        geometry = route.get("geometry", "")
+        distance = route.get("distance")
+        duration = route.get("duration")
+        
+        # Decode polyline to get waypoints
+        if geometry:
+            waypoints = polyline.decode(geometry)
+            # Limit to 245 waypoints maximum
+            if len(waypoints) > 245:
+                # Sample waypoints to get exactly 245 points
+                step = len(waypoints) / 245
+                waypoints = [waypoints[int(i * step)] for i in range(245)]
+            
+            # Convert to [lat, lng] format for JSON storage
+            waypoints_json = json.dumps([[lat, lng] for lat, lng in waypoints])
+            
+            # Prepare polyline positions for frontend
+            polyline_positions = json.dumps(waypoints)
+            
+            return distance, duration, geometry, waypoints_json, polyline_positions, len(waypoints)
+        else:
+            raise ValueError("No geometry in OSRM response")
+            
+    except Exception as e:
+        print(f"Error fetching full OSRM route: {e}")
+        return None, None, None, None, None, 0
 
 authority_bp = Blueprint("authority_bp", __name__)
 
@@ -143,6 +200,31 @@ def dispatch_emergency(emergency_id):
 
     nearest_unit = best["unit"]
 
+    # Phase 1: Fetch full OSRM route with cached waypoints
+    try:
+        full_distance, full_duration, route_geometry, waypoints_json, polyline_positions, waypoint_count = fetch_full_osrm_route(
+            nearest_unit.latitude,
+            nearest_unit.longitude,
+            emergency.latitude,
+            emergency.longitude
+        )
+        
+        if full_distance is None:
+            print(f"⚠️ Failed to fetch full route for Emergency #{emergency.request_id}, using basic dispatch")
+            # Fallback to basic dispatch without route caching
+            full_distance = best["distance"]
+            full_duration = best["duration"]
+            waypoints_json = None
+            polyline_positions = None
+            waypoint_count = 0
+    except Exception as e:
+        print(f"⚠️ Route fetching error: {e}, using basic dispatch")
+        full_distance = best["distance"]
+        full_duration = best["duration"]
+        waypoints_json = None
+        polyline_positions = None
+        waypoint_count = 0
+
     # Update statuses
     nearest_unit.status = "DISPATCHED"
     nearest_unit.last_updated = datetime.utcnow()
@@ -151,6 +233,31 @@ def dispatch_emergency(emergency_id):
     emergency.assigned_unit = nearest_unit.unit_id
     emergency.approved_by = "Central Authority"
 
+    # Store route calculation with cached waypoints (Phase 1)
+    route_calc = RouteCalculation(
+        unit_id=nearest_unit.unit_id,
+        emergency_id=emergency.request_id,
+        osrm_response=json.dumps({
+            "full_route_distance": full_distance,
+            "full_route_duration": full_duration,
+            "original_distance": best["distance"],
+            "original_duration": best["duration"]
+        }),
+        route_geometry=route_geometry,
+        distance=full_distance,
+        duration=full_duration,
+        profile='driving',
+        cached_waypoints=waypoints_json,
+        polyline_positions=polyline_positions,
+        waypoint_count=waypoint_count,
+        start_latitude=nearest_unit.latitude,
+        start_longitude=nearest_unit.longitude,
+        end_latitude=emergency.latitude,
+        end_longitude=emergency.longitude,
+        is_active=True
+    )
+    
+    db.session.add(route_calc)
     db.session.commit()
 
     # Send notifications
@@ -166,7 +273,11 @@ def dispatch_emergency(emergency_id):
         'status': emergency.status,
         'approved_by': emergency.approved_by,
         'assigned_unit': emergency.assigned_unit,
-        'created_at': emergency.created_at.isoformat() if emergency.created_at else None
+        'created_at': emergency.created_at.isoformat() if emergency.created_at else None,
+        # Phase 1: Include cached route positions for polyline
+        'route_positions': json.loads(polyline_positions) if polyline_positions else None,
+        'waypoint_count': waypoint_count,
+        'route_calculation_id': route_calc.id
     }
     
     unit_data = {
@@ -182,14 +293,26 @@ def dispatch_emergency(emergency_id):
     socketio.emit('emergency_updated', {
         'action': 'assigned',
         'emergency': emergency_data,
-        'unit': unit_data
+        'unit': unit_data,
+        'route_info': {
+            'positions': emergency_data['route_positions'],
+            'waypoint_count': waypoint_count,
+            'distance': full_distance,
+            'duration': full_duration
+        }
     })
     
     # Broadcast to unit tracking room
     socketio.emit('emergency_update', {
         'action': 'assigned',
         'emergency': emergency_data,
-        'unit': unit_data
+        'unit': unit_data,
+        'route_info': {
+            'positions': emergency_data['route_positions'],
+            'waypoint_count': waypoint_count,
+            'distance': full_distance,
+            'duration': full_duration
+        }
     }, room='unit_tracking')
     
     # Update unit status
@@ -197,18 +320,25 @@ def dispatch_emergency(emergency_id):
         'unit_id': nearest_unit.unit_id,
         'status': 'DISPATCHED',
         'emergency_id': emergency.request_id,
-        'assigned_emergency': emergency_data
+        'assigned_emergency': emergency_data,
+        'route_info': {
+            'positions': emergency_data['route_positions'],
+            'waypoint_count': waypoint_count
+        }
     })
     
-    print(f"🔴 Real-time: Emergency #{emergency.request_id} dispatched to Unit {nearest_unit.unit_id}")
+    print(f"🔴 Real-time: Emergency #{emergency.request_id} dispatched to Unit {nearest_unit.unit_id} with {waypoint_count} cached waypoints")
 
     return jsonify({
         "message": "Emergency dispatched successfully",
         "emergency_id": emergency.request_id,
         "assigned_unit_id": nearest_unit.unit_id,
-        "distance_m": best["distance"],
-        "eta_s": best["duration"],
-        "routing_source": "osrm" if best["duration"] is not None else "euclidean_fallback"
+        "distance_m": full_distance,
+        "eta_s": full_duration,
+        "waypoint_count": waypoint_count,
+        "route_positions": emergency_data['route_positions'],
+        "route_calculation_id": route_calc.id,
+        "routing_source": "osrm_full_geometry" if waypoint_count > 0 else "euclidean_fallback"
     })
 
 # -------------------------

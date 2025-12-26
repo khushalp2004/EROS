@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from flask import request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from models import Unit, Emergency
+import polyline
 
 # Initialize SocketIO - This will be the shared instance
 socketio = SocketIO()
@@ -30,6 +31,65 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     
     return R * c
 
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two points using Haversine formula (returns meters)"""
+    R = 6371  # Earth's radius in kilometers
+    
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+    
+    a = (math.sin(delta_lat / 2) * math.sin(delta_lat / 2) + 
+         math.cos(lat1_rad) * math.cos(lat2_rad) * 
+         math.sin(delta_lon / 2) * math.sin(delta_lon / 2))
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    return R * c * 1000  # Convert to meters
+
+def point_to_segment_distance(point, segment_start, segment_end):
+    """Calculate distance from point to line segment"""
+    px, py = point
+    x1, y1 = segment_start
+    x2, y2 = segment_end
+    
+    # Vector from start to end
+    dx = x2 - x1
+    dy = y2 - y1
+    
+    # Vector from start to point
+    fx = px - x1
+    fy = py - y1
+    
+    # Calculate projection parameter
+    dot = fx * dx + fy * dy
+    length_squared = dx * dx + dy * dy
+    
+    t = 0
+    if length_squared > 0:
+        t = dot / length_squared
+    
+    # Clamp to segment
+    t = max(0, min(1, t))
+    
+    # Calculate closest point on segment
+    closest_x = x1 + t * dx
+    closest_y = y1 + t * dy
+    
+    # Calculate distance
+    distance = haversine_distance(px, py, closest_x, closest_y)
+    
+    # Calculate distance along segment
+    segment_length = haversine_distance(x1, y1, x2, y2)
+    distance_along_segment = t * segment_length
+    
+    return {
+        'distance': distance,
+        'closestPoint': [closest_x, closest_y],
+        'distanceAlongSegment': distance_along_segment,
+        'projectionParameter': t
+    }
+
 def interpolate_location(start_lat, start_lon, end_lat, end_lon, progress):
     """Interpolate between two locations based on progress (0-1)"""
     return (
@@ -37,16 +97,23 @@ def interpolate_location(start_lat, start_lon, end_lat, end_lon, progress):
         start_lon + (end_lon - start_lon) * progress
     )
 
-def update_unit_location(unit_id, latitude, longitude, status="ENROUTE"):
+def update_unit_location(unit_id, latitude, longitude, status="ENROUTE", progress=None, emergency_id=None, route_data=None):
     """Update unit location and broadcast to all connected clients"""
     timestamp = datetime.utcnow()
     
-    # Store current location
+    # Calculate route progress if not provided and unit has active emergency
+    if progress is None:
+        progress = calculate_route_progress_for_unit(unit_id, latitude, longitude)
+    
+    # Store current location with route progress
     unit_locations[unit_id] = {
         'latitude': latitude,
         'longitude': longitude,
         'timestamp': timestamp,
-        'status': status
+        'status': status,
+        'progress': progress,
+        'emergency_id': emergency_id,
+        'route_data': route_data
     }
     
     # Add to location history
@@ -57,21 +124,103 @@ def update_unit_location(unit_id, latitude, longitude, status="ENROUTE"):
         'latitude': latitude,
         'longitude': longitude,
         'timestamp': timestamp,
-        'status': status
+        'status': status,
+        'progress': progress,
+        'emergency_id': emergency_id
     })
     
     # Keep only last 100 location updates per unit
     if len(location_history[unit_id]) > 100:
         location_history[unit_id] = location_history[unit_id][-100:]
     
-    # Broadcast location update to all connected clients
-    socketio.emit('unit_location_update', {
+    # Broadcast location update to all connected clients with route progress
+    location_update_data = {
         'unit_id': unit_id,
         'latitude': latitude,
         'longitude': longitude,
         'timestamp': timestamp.isoformat(),
-        'status': status
-    })
+        'status': status,
+        'progress': progress,
+        'emergency_id': emergency_id,
+        'route_data': route_data
+    }
+    
+    socketio.emit('unit_location_update', location_update_data)
+    socketio.emit('location_update', location_update_data, room='unit_tracking')
+
+def calculate_route_progress_for_unit(unit_id, lat, lng):
+    """Calculate route progress for a unit based on their active emergency assignment"""
+    try:
+        from models import Unit, Emergency, RouteCalculation
+        import json
+        
+        # Get unit and check if assigned to emergency
+        unit = Unit.query.get(unit_id)
+        if not unit:
+            return 0.0
+        
+        # Check if unit is assigned to any emergency
+        emergency = Emergency.query.filter_by(
+            assigned_unit=unit_id,
+            status='ASSIGNED'
+        ).first()
+        
+        if not emergency:
+            return 0.0
+        
+        # Get active route calculation
+        route_calculation = RouteCalculation.query.filter_by(
+            unit_id=unit_id,
+            emergency_id=emergency.request_id,
+            is_active=True
+        ).order_by(RouteCalculation.timestamp.desc()).first()
+        
+        if not route_calculation or not route_calculation.route_geometry:
+            return 0.0
+
+        # Parse route geometry - it's stored as an encoded polyline string
+        if isinstance(route_calculation.route_geometry, str):
+            if not route_calculation.route_geometry.strip():
+                return 0.0
+            try:
+                # Decode the polyline to get coordinates [lat, lng]
+                route_coords = polyline.decode(route_calculation.route_geometry)
+            except Exception:
+                return 0.0
+        else:
+            return 0.0
+
+        if not route_coords or len(route_coords) < 2:
+            return 0.0
+        
+        # Find closest point on route and calculate progress
+        min_distance = float('inf')
+        total_distance = 0.0
+        distance_to_point = 0.0
+        
+        for i in range(len(route_coords) - 1):
+            start = route_coords[i]
+            end = route_coords[i + 1]
+            
+            # Calculate segment distance
+            segment_distance = haversine_distance(start[0], start[1], end[0], end[1])
+            total_distance += segment_distance
+            
+            # Calculate distance from current position to this segment
+            point_distance = point_to_segment_distance([lat, lng], start, end)
+            
+            if point_distance['distance'] < min_distance:
+                min_distance = point_distance['distance']
+                distance_to_point = total_distance - segment_distance + point_distance['distanceAlongSegment']
+        
+        # Calculate progress (0.0 to 1.0)
+        progress = min(1.0, max(0.0, distance_to_point / total_distance)) if total_distance > 0 else 0.0
+        
+        return progress
+        
+    except Exception as e:
+        print(f"Error calculating route progress for unit {unit_id}: {e}")
+        return 0.0
 
 def simulate_unit_movement(app=None):
     """Background thread to simulate unit movement along emergency routes"""
@@ -159,9 +308,13 @@ def simulate_unit_movement(app=None):
             else:
                 status = "DEPARTED"
             
-            # Update unit location
-            update_unit_location(unit_id, current_lat, current_lon, status)
-            
+            # Update unit location with progress
+            update_unit_location(
+                unit_id, current_lat, current_lon, status,
+                progress=progress,
+                emergency_id=emergency.request_id
+            )
+
             # Store updated progress and position for next iteration
             unit_locations[unit_id]['progress'] = progress
             unit_locations[unit_id]['latitude'] = current_lat
@@ -187,12 +340,12 @@ simulation_running = False
 def init_websocket(app):
     """Initialize WebSocket with the Flask app"""
     global simulation_thread, simulation_running
-    socketio.init_app(app, 
-        cors_allowed_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    socketio.init_app(app,
+        cors_allowed_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://localhost:3001"],
         cors_credentials=False,
-        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"]
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRFToken"]
     )
-    
+
     # Start simulation thread only once
     if not simulation_running:
         print("🚀 Starting backend unit movement simulation...")
@@ -250,7 +403,7 @@ def handle_leave_tracking_room():
     emit('room_left', {'room': 'unit_tracking'})
 
 @socketio.on('get_unit_locations')
-def handle_get_unit_locations():
+def handle_get_unit_locations(data=None):
     """Handle request for current unit locations"""
     locations = {}
     for unit_id, location in unit_locations.items():

@@ -7,6 +7,7 @@ import NotificationPanel from "./components/NotificationPanel";
 import AddEmergency from "./components/AddEmergency";
 import Dashboard from "./pages/Dashboard";
 import UnitsTracking from "./pages/UnitsTracking";
+import RealTimeUnitTracking from "./pages/RealTimeUnitTracking";
 import "./styles/design-system.css";
 
 // Make toast functions globally available
@@ -138,6 +139,24 @@ function App() {
               >
                 📍 Units Tracking
               </Link>
+              <Link 
+                to="/realtime-tracking" 
+                className="nav-link"
+                style={{
+                  textDecoration: 'none',
+                  color: 'var(--text-secondary)',
+                  fontWeight: 'var(--font-medium)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  borderRadius: 'var(--radius-lg)',
+                  transition: 'all var(--transition-fast)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  fontSize: 'var(--text-sm)'
+                }}
+              >
+                🗺️ Real-Time Map
+              </Link>
             </nav>
             
             {/* Notification Badge */}
@@ -153,6 +172,7 @@ function App() {
               <Route path="/" element={<AddEmergency />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/units-tracking" element={<UnitsTracking />} />
+              <Route path="/realtime-tracking" element={<RealTimeUnitTracking />} />
             </Routes>
           </main>
 

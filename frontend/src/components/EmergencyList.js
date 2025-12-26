@@ -1,4 +1,14 @@
 import React from "react";
+import { 
+  isEmergency, 
+  isUnit, 
+  getAssignedUnit, 
+  getUnitId, 
+  safeGet, 
+  validateEmergency,
+  validateUnit,
+  logDataError
+} from "../utils/DataValidationUtils";
 
 function EmergencyList({
   emergencies = [],
@@ -127,11 +137,11 @@ function EmergencyList({
                   alignItems: 'center', 
                   gap: 'var(--space-1)',
                   fontWeight: 'var(--font-medium)',
-                  color: emergency.assigned_unit ? 'var(--text-primary)' : 'var(--text-muted)'
+                  color: getAssignedUnit(emergency) ? 'var(--text-primary)' : 'var(--text-muted)'
                 }}>
-                  {emergency.assigned_unit ? (
+                  {getAssignedUnit(emergency) ? (
                     <>
-                      🚐 Unit {emergency.assigned_unit}
+                      🚐 Unit {getAssignedUnit(emergency)}
                     </>
                   ) : (
                     '—'

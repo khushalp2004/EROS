@@ -239,35 +239,102 @@ function MapAutoCenter({ center }) {
   return null;
 }
 
-function AnimatedPolyline({ positions, progress = 1, color = "#0080ff", originalPositions = [] }) {
-  // Calculate how much of the polyline to show based on progress
-  const visiblePositions = positions.slice(0, Math.max(2, Math.floor(positions.length * progress)));
+/**
+ * AnimatedPolyline Component (Basic Version)
+ * 
+ * Refactored to use OSRM geometry + progress-based animation:
+ * - OSRM geometry → polyline (fixed) + progress (dynamic) → animation calculated from both
+ * 
+ * Props:
+ * - positions: Array of [lat, lng] coordinates from OSRM route geometry
+ * - progress: Float (0-1) representing progress along the route
+ * - color: Route color for visualization
+ * - originalPositions: Full route coordinates (optional, defaults to positions)
+ * - serviceType: Service type for icon selection (optional)
+ * - unitId: Unit identifier for tracking (optional)
+ */
+function AnimatedPolyline({ 
+  positions, 
+  progress = 1, 
+  color = "#0080ff", 
+  originalPositions = [], 
+  serviceType = null,
+  unitId = null
+}) {
+  // Calculate position at progress for potential future marker usage
+  const getProgressPosition = () => {
+    if (positions.length === 0) return null;
+    
+    // Validate progress
+    if (progress < 0 || progress > 1 || isNaN(progress)) {
+      console.warn(`Invalid progress value: ${progress}. Using 0.`);
+      return positions[0]; // Start of route
+    }
+    
+    // Calculate position at progress
+    const index = Math.floor(progress * (positions.length - 1));
+    return positions[Math.max(0, Math.min(positions.length - 1, index))];
+  };
+
+  // Determine final positions
+  const fullRoutePositions = originalPositions.length > 0 ? originalPositions : positions;
+  const progressPosition = getProgressPosition();
   
   return (
     <>
-      {/* Draw the full route as a faint background */}
-      {originalPositions.length > 1 && (
+      {/* 🆕 FULL ROUTE: Draw complete OSRM geometry as main route */}
+      {fullRoutePositions.length > 1 && (
         <Polyline
-          positions={originalPositions}
+          positions={fullRoutePositions}
           pathOptions={{ 
             color: color, 
-            weight: 2, 
-            opacity: 0.2, 
-            dashArray: "3 3" 
+            weight: 4, 
+            opacity: 0.7,
+            className: "animated-route full-route-line"
           }}
         />
       )}
-      {/* Draw the animated progress */}
-      {visiblePositions.length > 1 && (
-        <Polyline
-          positions={visiblePositions}
-          pathOptions={{ 
-            color: color, 
-            weight: 6, 
-            opacity: 0.8,
-            className: "animated-route"
-          }}
-        />
+      
+      {/* 🆕 PROGRESS POSITION: Calculate position at progress (for future marker usage) */}
+      {progressPosition && (
+        <Marker
+          position={progressPosition}
+          icon={L.divIcon({
+            className: "progress-marker",
+            html: `
+              <div style="
+                position: relative;
+                width: 20px;
+                height: 20px;
+                background: ${color};
+                border: 2px solid white;
+                border-radius: 50%;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+                z-index: 1000;
+                animation: pulse 2s infinite;
+              "></div>
+              <style>
+                @keyframes pulse {
+                  0% { transform: scale(1); }
+                  50% { transform: scale(1.2); }
+                  100% { transform: scale(1); }
+                }
+              </style>
+            `,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+          })}
+          zIndexOffset={1000}
+        >
+          <Popup>
+            <div>
+              <strong>🚩 Route Progress</strong><br/>
+              <strong>Unit:</strong> {unitId || 'Unknown'}<br/>
+              <strong>Progress:</strong> {(progress * 100).toFixed(1)}%<br/>
+              <strong>Animation:</strong> OSRM Geometry + Progress
+            </div>
+          </Popup>
+        </Marker>
       )}
     </>
   );
@@ -391,6 +458,8 @@ function MapView({ markers, center, polylines = [] }) {
             progress={pl.progress || 1}
             color={pl.color || "#0080ff"}
             originalPositions={pl.originalPositions}
+            serviceType={pl.serviceType}
+            unitId={pl.unitId}
           />
         ))}
       </MapContainer>

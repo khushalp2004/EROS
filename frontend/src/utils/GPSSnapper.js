@@ -29,7 +29,7 @@ class GPSSnapper {
     const route = this.geometryManager.getRoute(routeId);
     
     if (!route) {
-      console.warn(`⚠️ No route found for ${routeId}`);
+      console.warn(`⚠️ No route found for ${routeId}. Available routes:`, Array.from(this.geometryManager.pathCache.keys()));
       return {
         snappedPosition: [lat, lng],
         isSnapped: false,
@@ -38,6 +38,12 @@ class GPSSnapper {
         accuracy: 'unknown'
       };
     }
+
+    console.log(`🎯 GPS Snap attempt for ${routeId}:`, {
+      GPS: [lat.toFixed(6), lng.toFixed(6)],
+      routePoints: route.coordinates.length,
+      totalDistance: route.totalDistance.toFixed(2) + 'km'
+    });
 
     // Check cache first for performance
     const cacheKey = this.getCacheKey(lat, lng, routeId);

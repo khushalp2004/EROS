@@ -25,8 +25,8 @@ function Dashboard() {
     try {
       setLoading(true);
       const [resUnits, resEmergencies] = await Promise.all([
-        api.get("/authority/units"),
-        api.get("/authority/emergencies"),
+        api.get("/api/authority/units"),
+        api.get("/api/authority/emergencies"),
       ]);
       setUnits(resUnits.data);
       setEmergencies(resEmergencies.data);

@@ -1,64 +1,81 @@
-// import axios from "axios";
-
-// const api = axios.create({
-//   // Use explicit IPv4 to avoid macOS AirPlay (AirTunes) on ::1:5001
-//   baseURL: "http://127.0.0.1:5001",
-//   timeout: 10000,
-//   headers: {
-//     "Content-Type": "application/json",
-//   },
-//   // Enable credentials for CORS
-//   withCredentials: true,
-//   crossDomain: true,
-// });
-
-// // Request interceptor to handle CORS preflight
-// api.interceptors.request.use(
-//   (config) => {
-//     // Add timestamp to prevent caching issues
-//     config.headers['Cache-Control'] = 'no-cache';
-//     return config;
-//   },
-//   (error) => {
-//     return Promise.reject(error);
-//   }
-// );
-
-// // Response interceptor to handle CORS errors
-// api.interceptors.response.use(
-//   (response) => response,
-//   (error) => {
-//     if (error.response) {
-//       // The request was made and the server responded with a status code
-//       // that falls out of the range of 2xx
-//       console.error('API Error:', {
-//         status: error.response.status,
-//         data: error.response.data,
-//         headers: error.response.headers,
-//       });
-//     } else if (error.request) {
-//       // The request was made but no response was received
-//       console.error('Network Error:', error.request);
-//     } else {
-//       // Something happened in setting up the request that triggered an Error
-//       console.error('Request Error:', error.message);
-//     }
-//     return Promise.reject(error);
-//   }
-// );
-
-// export default api;
-
 import axios from "axios";
 
 const api = axios.create({
   baseURL: "http://127.0.0.1:5001",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  withCredentials: false,
-  crossDomain: true,
+  headers: { "Content-Type": "application/json" },
+  withCredentials: false
 });
+
+
+// Location tracking API methods
+export const locationAPI = {
+  // Update unit location
+  updateLocation: (locationData) => 
+    api.post('/api/location/update', locationData),
+  
+  // Get current location for a unit
+  getCurrentLocation: (unitId) => 
+    api.get(`/api/location/unit/${unitId}/current`),
+  
+  // Get location history for a unit
+  getLocationHistory: (unitId, params = {}) => {
+    const queryParams = new URLSearchParams(params).toString();
+    return api.get(`/api/location/unit/${unitId}/history${queryParams ? '?' + queryParams : ''}`);
+  },
+  
+  // Get all unit locations
+  getAllLocations: () => 
+    api.get('/api/location/units/all'),
+  
+  // Calculate route using OSRM
+  calculateRoute: (routeData) => 
+    api.post('/api/route/calculate', routeData),
+  
+  // Get active routes for a unit
+  getActiveRoutes: (unitId) => 
+    api.get(`/api/route/unit/${unitId}/active`)
+};
+
+// Unit tracking API methods
+export const unitAPI = {
+  // Get all units
+  getUnits: () => api.get('/api/units'),
+  
+  // Get specific unit
+  getUnit: (unitId) => api.get(`/api/units/${unitId}`),
+  
+  // Create new unit
+  createUnit: (unitData) => api.post('/api/units', unitData),
+  
+  // Update unit
+  updateUnit: (unitId, unitData) => api.put(`/api/units/${unitId}`, unitData),
+  
+  // Delete unit
+  deleteUnit: (unitId) => api.delete(`/api/units/${unitId}`),
+
+  // ✅ NEW: Get route data with polylines_position for animation
+  getUnitRoutes: (unitId) => api.get(`/api/unit-routes/${unitId}`),
+  
+  // ✅ NEW: Get all active unit routes for dashboard overview
+  getActiveUnitRoutes: () => api.get('/api/active-unit-routes')
+};
+
+// Emergency API methods
+export const emergencyAPI = {
+  // Get all emergencies
+  getEmergencies: () => api.get('/api/emergencies'),
+  
+  // Create new emergency
+  createEmergency: (emergencyData) => api.post('/api/emergencies', emergencyData),
+  
+  // Update emergency status
+  updateEmergency: (requestId, status) => 
+    api.put(`/api/emergencies/${requestId}/status`, { status }),
+  
+  // Assign unit to emergency
+  assignUnit: (requestId, unitId) => 
+    api.post(`/api/emergencies/${requestId}/assign`, { unit_id: unitId })
+};
 
 export default api;
 

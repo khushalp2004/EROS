@@ -1,15 +1,24 @@
 import React, { useEffect, useState, useRef } from "react";
 import RealtimeMapView from "../components/RealtimeMapView";
-import api from "../api";
+import api, { unitAPI } from "../api";
 import { useWebSocketManager, connectionManager } from "../hooks/useWebSocketManager";
-import QuickGPSFix from "../utils/QuickGPSFix";
-import RouteGeometryManager from "../utils/RouteGeometryManager";
+import backendRouteManager from "../utils/BackendRouteManager";
+import { 
+  isEmergency, 
+  isUnit, 
+  getAssignedUnit, 
+  getUnitId, 
+  safeGet, 
+  validateEmergency,
+  validateUnit,
+  logDataError
+} from "../utils/DataValidationUtils";
 
 const UnitsTracking = () => {
   const [units, setUnits] = useState([]);
   const [emergencies, setEmergencies] = useState([]);
   const [selectedUnit, setSelectedUnit] = useState(null);
-  const [trackingMode, setTrackingMode] = useState('all'); // 'all', 'selected', 'simulated'
+  const [trackingMode, setTrackingMode] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [simulationStats, setSimulationStats] = useState({
@@ -17,15 +26,8 @@ const UnitsTracking = () => {
     totalRoutes: 0,
     estimatedArrivals: []
   });
-  const [routeCache, setRouteCache] = useState({}); // request_id -> {coords}
-  const [animationKey, setAnimationKey] = useState(0); // Force re-render for animations
-  const [animationStartTime, setAnimationStartTime] = useState(null); // Track animation start for 0-100% progress
-  const [routeFetchStatus, setRouteFetchStatus] = useState({}); // request_id -> {status, message}
-  const [snappedUnitLocations, setSnappedUnitLocations] = useState({}); // Enhanced with GPS snapping
-
-  // 🆕 NEW: GPS Snapping components
-  const geometryManagerRef = useRef(new RouteGeometryManager());
-  const gpsSnapperRef = useRef(QuickGPSFix);
+  const [routeFetchStatus, setRouteFetchStatus] = useState({});
+  const [backendRoutes, setBackendRoutes] = useState([]);
 
   const { 
     isConnected, 
@@ -40,7 +42,7 @@ const UnitsTracking = () => {
   const fetchUnits = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/authority/units');
+      const response = await api.get('/api/authority/units');
       setUnits(response.data);
     } catch (err) {
       setError('Failed to fetch units');
@@ -52,36 +54,30 @@ const UnitsTracking = () => {
 
   const fetchEmergencies = async () => {
     try {
-      const response = await api.get('/authority/emergencies');
+      const response = await api.get('/api/authority/emergencies');
       setEmergencies(response.data);
     } catch (err) {
       console.error('Error fetching emergencies:', err);
     }
   };
 
-  // Initial data fetching
   useEffect(() => {
     fetchUnits();
     fetchEmergencies();
   }, []);
 
-  // WebSocket connection monitoring - centralized coordination
   useEffect(() => {
     if (isConnected) {
       console.log('✅ WebSocket connected - centralized real-time tracking enabled');
-      
-      // Initial unit locations refresh when WebSocket connects
       refreshUnitLocations();
     }
   }, [isConnected, refreshUnitLocations]);
 
-  // Real-time event handlers for automatic updates
   useEffect(() => {
     if (!isConnected) return;
     
     const handleEmergencyCreated = (emergency) => {
       console.log('🆕 New emergency created (UnitsTracking):', emergency);
-      // Add to emergencies list
       setEmergencies(prev => {
         const exists = prev.some(e => e.request_id === emergency.request_id);
         if (!exists) {
@@ -95,7 +91,6 @@ const UnitsTracking = () => {
       console.log('📝 Emergency updated (UnitsTracking):', data);
       const { action, emergency } = data;
       
-      // Update emergency in the list
       setEmergencies(prev => {
         return prev.map(e => 
           e.request_id === emergency.request_id ? { ...e, ...emergency } : e
@@ -107,7 +102,6 @@ const UnitsTracking = () => {
       console.log('📍 Unit status updated (UnitsTracking):', data);
       const { unit_id, status } = data;
       
-      // Update unit in the list
       setUnits(prev => {
         return prev.map(u => 
           u.unit_id === unit_id ? { ...u, status } : u
@@ -115,15 +109,11 @@ const UnitsTracking = () => {
       });
     };
 
-    // 🆕 CRITICAL: Enhanced unit location update handler with GPS snapping
     const handleUnitLocationUpdateEnhanced = (data) => {
       console.log('📍 Enhanced unit location update with GPS snapping:', data);
-      
-      // Apply GPS snapping to fix straight-line movement
       handleUnitLocationUpdate(data);
     };
 
-    // Subscribe to real-time events via WebSocket manager
     const unsubscribeEmergencyCreated = connectionManager.subscribe('emergency_created', handleEmergencyCreated);
     const unsubscribeEmergencyUpdated = connectionManager.subscribe('emergency_updated', handleEmergencyUpdated);
     const unsubscribeUnitStatusUpdate = connectionManager.subscribe('unit_status_update', handleUnitStatusUpdate);
@@ -137,164 +127,83 @@ const UnitsTracking = () => {
     };
   }, [isConnected]);
 
-  // Calculate simulation stats whenever data changes
   useEffect(() => {
     if (units.length > 0 || emergencies.length > 0) {
       calculateSimulationStats();
     }
   }, [units, emergencies, unitLocations]);
 
-  // REMOVED: Animation timer to prevent continuous re-rendering - UnitsTracking only
-
-  // Fetch realistic route polyline for assigned emergencies (OSRM public demo) - ENHANCED
-  const routeFetchCacheRef = React.useRef(new Set()); // Track what's being fetched to avoid duplicates
-
+  // ✅ SIMPLIFIED: Use BackendRouteManager for route data
   useEffect(() => {
-    const assigned = emergencies.filter((e) => e.status === "ASSIGNED" && e.assigned_unit);
-    const unitById = Object.fromEntries(units.map((u) => [u.unit_id, u]));
-
-    assigned.forEach((e) => {
-      const cacheKey = `${e.request_id}-${e.assigned_unit}`;
-      
-      // Skip if we already have this route cached or are currently fetching it
-      if (routeCache[e.request_id]?.coords?.length > 0) {
-        console.log(`🗺️ Route already cached for Emergency ${e.request_id}`);
-        routeFetchCacheRef.current.delete(cacheKey);
-        return;
-      }
-      
-      if (routeFetchCacheRef.current.has(cacheKey)) {
-        console.log(`⏳ Route already being fetched for Emergency ${e.request_id}`);
-        return;
-      }
-      
-      const unit = unitById[e.assigned_unit];
-      if (!unit) {
-        console.warn(`⚠️ Unit ${e.assigned_unit} not found for Emergency ${e.request_id}`);
-        return;
-      }
-
-      const fetchRoute = async () => {
-        routeFetchCacheRef.current.add(cacheKey);
-        setRouteFetchStatus(prev => ({ 
-          ...prev, 
-          [e.request_id]: { status: 'fetching', message: `Fetching route for Emergency #${e.request_id}...` }
-        }));
+    const initializeBackendRoutes = async () => {
+      try {
+        console.log('🗄️ Initializing backend route manager...');
         
-        try {
-          console.log(`🛣️ Fetching route for Emergency ${e.request_id}: Unit ${unit.unit_id} → Emergency location`);
-          
-          // Validate coordinates before making request
-          const startLat = parseFloat(unit.latitude);
-          const startLon = parseFloat(unit.longitude);
-          const endLat = parseFloat(e.latitude);
-          const endLon = parseFloat(e.longitude);
-          
-          if (isNaN(startLat) || isNaN(startLon) || isNaN(endLat) || isNaN(endLon)) {
-            const errorMsg = 'Invalid coordinates';
-            console.error(`❌ ${errorMsg} for Emergency ${e.request_id}:`, {
-              unit: { lat: unit.latitude, lon: unit.longitude },
-              emergency: { lat: e.latitude, lon: e.longitude }
-            });
-            setRouteCache((prev) => ({ ...prev, [e.request_id]: { coords: [], error: errorMsg } }));
-            setRouteFetchStatus(prev => ({ 
-              ...prev, 
-              [e.request_id]: { status: 'error', message: errorMsg }
-            }));
-            return;
-          }
-
-          const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
-          console.log(`🌐 OSRM Request URL: ${url}`);
-          
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-          
-          const res = await fetch(url, { 
-            signal: controller.signal,
-            headers: {
-              'User-Agent': 'EROS-Emergency-Response-System/1.0'
-            }
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (!res.ok) {
-            throw new Error(`OSRM API error: ${res.status} ${res.statusText}`);
-          }
-          
-          const data = await res.json();
-          console.log(`📊 OSRM Response for Emergency ${e.request_id}:`, data);
-          
-          if (data.code !== 'Ok') {
-            throw new Error(`OSRM routing failed: ${data.code}`);
-          }
-          
-          const coords = data?.routes?.[0]?.geometry?.coordinates || [];
-          
-          if (!Array.isArray(coords) || coords.length === 0) {
-            throw new Error('No route coordinates returned from OSRM');
-          }
-          
-          // coords from OSRM are [lon, lat]; convert to [lat, lon]
-          const latlng = coords.map(([lon, lat]) => {
-            if (isNaN(lat) || isNaN(lon)) {
-              throw new Error('Invalid coordinate values in OSRM response');
-            }
-            return [lat, lon];
-          });
-          
-          console.log(`✅ Route fetched successfully for Emergency ${e.request_id}: ${latlng.length} waypoints`);
-          setRouteCache((prev) => ({ ...prev, [e.request_id]: { coords: latlng, timestamp: Date.now() } }));
-          setRouteFetchStatus(prev => ({ 
-            ...prev, 
-            [e.request_id]: { status: 'success', message: `Route loaded: ${latlng.length} waypoints` }
-          }));
-          
-        } catch (err) {
-          console.error(`❌ Route fetch failed for Emergency ${e.request_id}:`, err.message);
-          const errorMsg = err.message || 'Unknown error';
-          // Store empty coords with error info for fallback tracking
-          setRouteCache((prev) => ({ 
-            ...prev, 
-            [e.request_id]: { 
-              coords: [], 
-              error: errorMsg, 
-              timestamp: Date.now() 
-            } 
-          }));
-          setRouteFetchStatus(prev => ({ 
-            ...prev, 
-            [e.request_id]: { status: 'error', message: errorMsg }
-          }));
-        } finally {
-          routeFetchCacheRef.current.delete(cacheKey);
-        }
-      };
-      
-      console.log(`🔄 Starting route fetch for Emergency ${e.request_id}`);
-      fetchRoute();
-    });
+        // Start automatic updates from backend
+        backendRouteManager.startAutoUpdates(2000); // Update every 2 seconds
+        
+        // Fetch initial data
+        await backendRouteManager.fetchActiveRoutes();
+        
+        // Get initial routes
+        const activeRoutes = backendRouteManager.getAllActiveRoutes();
+        setBackendRoutes(activeRoutes);
+        
+        console.log(`✅ Backend route manager initialized with ${activeRoutes.length} active routes`);
+        
+      } catch (err) {
+        console.error('❌ Failed to initialize backend route manager:', err);
+        setError('Failed to initialize route system');
+      }
+    };
     
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emergencies, units]); // Removed routeCache dependency to prevent infinite loops
+    // Initialize when we have data
+    if (emergencies.length > 0 && units.length > 0) {
+      initializeBackendRoutes();
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      backendRouteManager.stopAutoUpdates();
+    };
+  }, [emergencies, units]);
+
+  // Update routes state when backend manager updates
+  useEffect(() => {
+    const updateInterval = setInterval(() => {
+      const activeRoutes = backendRouteManager.getAllActiveRoutes();
+      setBackendRoutes(activeRoutes);
+      
+      // Update fetch status
+      const status = {};
+      activeRoutes.forEach(route => {
+        status[route.emergency_id] = {
+          status: 'success',
+          message: `Database route: ${route.route?.positions?.length || 0} waypoints`
+        };
+      });
+      setRouteFetchStatus(status);
+    }, 2000);
+    
+    return () => clearInterval(updateInterval);
+  }, []);
 
   const calculateSimulationStats = () => {
     const activeSims = Object.keys(unitLocations).length;
-    const assignedEmergencies = emergencies.filter(e => e.status === 'ASSIGNED');
+    const assignedEmergencies = emergencies.filter(e => e.status === 'ASSIGNED' && getAssignedUnit(e));
     const estimatedArrivals = assignedEmergencies.map(emergency => {
-      const unit = units.find(u => u.unit_id === emergency.assigned_unit);
+      const assignedUnitId = getAssignedUnit(emergency);
+      const unit = units.find(u => u.unit_id === assignedUnitId);
       if (!unit) return null;
       
       const distance = calculateDistance(
         unit.latitude, unit.longitude,
         emergency.latitude, emergency.longitude
       );
-      // Rough estimation: 30 km/h average speed in city
       const estimatedMinutes = Math.ceil((distance / 30) * 60);
       
       return {
-        unitId: emergency.assigned_unit,
+        unitId: assignedUnitId,
         emergencyId: emergency.request_id,
         distance: distance.toFixed(1),
         etaMinutes: estimatedMinutes
@@ -309,7 +218,7 @@ const UnitsTracking = () => {
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; // Earth's radius in km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -322,9 +231,7 @@ const UnitsTracking = () => {
   const handleUnitClick = (unit) => {
     setSelectedUnit(unit);
     setTrackingMode('selected');
-    // Start 0-100% animation when entering selected mode
-    setAnimationStartTime(Date.now());
-    console.log(`🎯 Selected Unit ${unit.unit_id} route animation started (0-100%)`);
+    console.log(`🎯 Selected Unit ${unit.unit_id} for focused tracking`);
   };
 
   const handleShowAllUnits = () => {
@@ -335,17 +242,7 @@ const UnitsTracking = () => {
   const handleToggleSimulation = () => {
     const newMode = trackingMode === 'simulated' ? 'all' : 'simulated';
     setTrackingMode(newMode);
-    // Force re-render for animation restart
-    setAnimationKey(prev => prev + 1);
-    
-    // Start 0-100% animation when entering animated modes
-    if (newMode === 'simulated' || newMode === 'selected') {
-      setAnimationStartTime(Date.now());
-      console.log(`${newMode === 'simulated' ? '🔴 Live' : '🎯 Selected'} route animation started (0-100%)`);
-    } else {
-      setAnimationStartTime(null);
-      console.log('📊 All routes display mode enabled');
-    }
+    console.log(`${newMode === 'simulated' ? '🔴 Live' : '📊 All'} tracking mode enabled`);
   };
 
   const getStatusColor = (status) => {
@@ -371,7 +268,6 @@ const UnitsTracking = () => {
   const formatTime = (timestamp) => {
     if (!timestamp) return 'N/A';
     try {
-      // Handle both string timestamps and datetime objects
       const date = new Date(timestamp);
       if (isNaN(date.getTime())) return 'Invalid Date';
       return date.toLocaleTimeString();
@@ -381,206 +277,73 @@ const UnitsTracking = () => {
     }
   };
 
-  // 🆕 HELPER: Find route data for a unit (OSRM format)
-  const findRouteDataForUnit = (unitId) => {
-    // Look for assigned emergency for this unit
-    const assignedEmergency = emergencies.find(e => 
-      e.status === "ASSIGNED" && e.assigned_unit === unitId
-    );
-    
-    if (assignedEmergency) {
-      // Get cached route data for this emergency
-      const cachedRoute = routeCache[assignedEmergency.request_id];
-      if (cachedRoute && cachedRoute.coords && cachedRoute.coords.length > 0) {
-        // Convert cached coords back to OSRM format [lon, lat]
-        const coordinates = cachedRoute.coords.map(([lat, lon]) => [lon, lat]);
-        
-        return {
-          geometry: {
-            coordinates: coordinates
-          },
-          emergencyId: assignedEmergency.request_id,
-          unitId: unitId
-        };
-      }
-    }
-    
-    return null;
-  };
-
-  // 🆕 CRITICAL: Enhanced unit location handler with GPS snapping
-  const handleUnitLocationUpdate = (data) => {
-    console.log('📍 Raw GPS data received:', data);
-    
-    if (data && data.unit_id && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
-      // Find route data for this unit
-      const routeData = findRouteDataForUnit(data.unit_id);
-      
-      // 🛠️ APPLY GPS SNAPPING - This fixes straight-line movement!
-      const snappedPosition = gpsSnapperRef.current.updateMarkerPosition(
-        data.unit_id,
-        data.latitude,      // Raw GPS from vehicle
-        data.longitude,     // Raw GPS from vehicle
-        routeData           // OSRM route geometry
-      );
-
-      // Update with SNAPPED coordinates instead of raw GPS
-      setSnappedUnitLocations(prev => ({
-        ...prev,
-        [data.unit_id]: {
-          ...snappedPosition,  // ← Snapped to route!
-          timestamp: data.timestamp,
-          status: data.status,
-          emergencyId: data.emergency_id
-        }
-      }));
-
-      // Debug logging
-      console.log(`🎯 Unit ${data.unit_id} GPS Snapping:`, {
-        rawGPS: [data.latitude, data.longitude],
-        snappedGPS: [snappedPosition.latitude, snappedPosition.longitude],
-        isSnapped: snappedPosition.isSnapped,
-        distance: `${snappedPosition.snapDistance?.toFixed(1)}m`
-      });
-    }
-  };
-
-  // ✅ Utility function: decide route color based on service type
   const getRouteColor = (serviceType) => {
-  if (!serviceType) return "#6c757d";
-  switch (serviceType.toUpperCase()) {
-    case "AMBULANCE": return "#dc3545";
-    case "POLICE": return "#0d6efd";
-    case "FIRE": return "#fd7e14";
-    default: return "#6c757d";
-  }
-};
+    if (!serviceType) return "#6c757d";
+    switch (serviceType.toUpperCase()) {
+      case "AMBULANCE": return "#dc3545";
+      case "POLICE": return "#0d6efd";
+      case "FIRE": return "#fd7e14";
+      default: return "#6c757d";
+    }
+  };
 
-
-
-  // Simplified route tracking - matches Dashboard approach with GPS snapping
-  const routePolylines = React.useMemo(() => {
-    const routes = [];
-    
-    emergencies
-      .filter((e) => e.status === "ASSIGNED" && e.assigned_unit)
-      .forEach((e) => {
-        const unit = units.find((u) => u.unit_id === e.assigned_unit);
-        if (!unit) return;
-        
-        // 🆕 PRIORITY: Use GPS-snapped location if available, otherwise use real-time, otherwise fallback to unit location
-        const snappedLocation = snappedUnitLocations[unit.unit_id];
-        const realtimeLocation = unitLocations[unit.unit_id];
-        
-        let unitLat, unitLon, isUsingSnappedGPS = false;
-        
-        if (snappedLocation && snappedLocation.isSnapped) {
-          // Use GPS-snapped position for accurate route following
-          unitLat = snappedLocation.latitude;
-          unitLon = snappedLocation.longitude;
-          isUsingSnappedGPS = true;
-          console.log(`🎯 Using GPS-snapped position for Unit ${unit.unit_id}: ${unitLat.toFixed(5)}, ${unitLon.toFixed(5)}`);
-        } else if (realtimeLocation) {
-          // Fallback to real-time location
-          unitLat = realtimeLocation.latitude;
-          unitLon = realtimeLocation.longitude;
-        } else {
-          // Final fallback to unit's static location
-          unitLat = unit.latitude;
-          unitLon = unit.longitude;
-        }
-        
-        routes.push({
-          id: `${unit.unit_id}-${e.request_id}`,
-          positions: [
-            [unitLat, unitLon],
-            [e.latitude, e.longitude]
-          ],
-          color: getRouteColor(unit.service_type),
-          unitId: unit.unit_id,
-          emergencyId: e.request_id,
-          serviceType: unit.service_type,
-          isRealtime: !!(snappedLocation || realtimeLocation),
-          isUsingSnappedGPS: isUsingSnappedGPS,
-          snapDistance: snappedLocation?.snapDistance || null
-        });
-      });
-    
-    return routes;
-  }, [units, emergencies, unitLocations, snappedUnitLocations]);
-
-  // Real-time route polylines with enhanced animation support - FIXED for realistic routes
+  // ✅ SIMPLIFIED: Build polylines using backend route data
   const realtimeRoutePolylines = React.useMemo(() => {
-    const polylines = routePolylines.map(route => {
-      // 🔧 FIXED: Proper route cache access with enhanced validation
-      const routeData = routeCache[route.emergencyId];
-      const cachedCoords = routeData?.coords;
+    const polylines = [];
+    
+    // Use backend route data directly
+    backendRoutes.forEach(routeData => {
+      const { unit_id, emergency_id, route, unit } = routeData;
       
-      // Use cached realistic routes if available, otherwise fallback to straight line
-      let positions = route.positions; // default fallback
-      let isUsingCachedRoute = false;
-      
-      if (cachedCoords && Array.isArray(cachedCoords) && cachedCoords.length > 1) {
-        positions = cachedCoords;
-        isUsingCachedRoute = true;
-        console.log(`🛣️ Using cached route for Emergency ${route.emergencyId}: ${cachedCoords.length} points`);
-      } else {
-        console.log(`📍 Using straight line fallback for Emergency ${route.emergencyId} (cached: ${cachedCoords ? cachedCoords.length : 'none'})`);
+      if (!route?.positions || !Array.isArray(route.positions) || route.positions.length === 0) {
+        return; // Skip if no route data
       }
       
-      // Calculate animation progress based on tracking mode
-      let progress = 1;
-      let isAnimated = false;
-      
-      if (trackingMode === 'simulated' || trackingMode === 'selected') {
-        // Animate routes in live/selected mode
-        isAnimated = true;
-        if (!route.isRealtime) {
-          // 0-100% animation progress from animationStartTime
-          if (animationStartTime) {
-            const animationDuration = 30000; // 30 seconds total
-            const elapsed = Date.now() - animationStartTime;
-            progress = Math.min(1, Math.max(0, elapsed / animationDuration));
-          } else {
-            // Start animation when tracking mode changes
-            progress = 0;
-          }
-        }
-      }
-      
-      return {
-        ...route,
-        positions,
-        originalPositions: positions,
-        progress,
-        color: route.color,
-        isAnimated,
-        isUsingCachedRoute,
-        serviceType: route.serviceType,
-        unitId: route.unitId
-      };
+      // Create polyline with backend data
+      polylines.push({
+        id: `${unit_id}-${emergency_id}`,
+        positions: route.positions,
+        color: getRouteColor(unit?.service_type),
+        unitId: unit_id,
+        emergencyId: emergency_id,
+        serviceType: unit?.service_type,
+        isRealtime: true,
+        progress: route.progress || 0,
+        isUsingCachedRoute: true,
+        source: 'backend',
+        totalDistance: route.total_distance,
+        estimatedDuration: route.estimated_duration
+      });
     });
     
-    // Filter routes based on tracking mode
-    const filteredPolylines = trackingMode === 'all' ? polylines : 
-      trackingMode === 'simulated' ? polylines.filter(route => route.isRealtime) :
-      trackingMode === 'selected' && selectedUnit ? 
-        polylines.filter(route => route.unitId === selectedUnit.unit_id) :
-        polylines;
+    // Filter based on tracking mode
+    let filteredPolylines = polylines;
     
-    // Enhanced debug logging with route type info
-    if (filteredPolylines.length > 0) {
-      const cachedCount = filteredPolylines.filter(p => p.isUsingCachedRoute).length;
-      const straightCount = filteredPolylines.filter(p => !p.isUsingCachedRoute).length;
-      console.log(`🛣️ UnitsTracking routes: ${filteredPolylines.length} total (${cachedCount} cached, ${straightCount} straight lines)`);
-      filteredPolylines.forEach(route => {
-        console.log(`  📍 Route ${route.emergencyId}: ${route.positions.length} points, ${route.isUsingCachedRoute ? 'REALISTIC' : 'STRAIGHT'}`);
-      });
+    if (trackingMode === 'simulated') {
+      filteredPolylines = polylines.filter(route => route.isRealtime);
+    } else if (trackingMode === 'selected' && selectedUnit) {
+      filteredPolylines = polylines.filter(route => route.unitId === selectedUnit.unit_id);
     }
     
+    console.log(`🛣️ Backend routes: ${filteredPolylines.length} polylines, ${trackingMode} mode`);
+    
     return filteredPolylines;
-  }, [routePolylines, routeCache, trackingMode, selectedUnit, animationStartTime]);
+  }, [backendRoutes, trackingMode, selectedUnit]);
 
+  // ✅ SIMPLIFIED: Simple GPS update handling
+  const handleUnitLocationUpdate = (data) => {
+    console.log('📍 GPS data received:', data);
+    
+    // For now, just log the GPS data - backend handles route calculations
+    if (data && data.unit_id) {
+      console.log(`📍 Unit ${data.unit_id} GPS update:`, {
+        latitude: data.latitude,
+        longitude: data.longitude,
+        accuracy: data.accuracy,
+        status: data.status
+      });
+    }
+  };
 
   const getTrackingModeIcon = () => {
     switch (trackingMode) {
@@ -590,47 +353,45 @@ const UnitsTracking = () => {
     }
   };
 
-  // Prepare map markers - show all units or only selected unit with GPS snapping priority
+  // ✅ SIMPLIFIED: Generate markers using backend route data
   const mapMarkers = React.useMemo(() => {
     const baseMarkers = selectedUnit ? [selectedUnit] : units;
     
     return baseMarkers.map(unit => {
-      // 🆕 PRIORITY: Use GPS-snapped location if available, otherwise use real-time, otherwise fallback to unit location
-      const snappedLocation = snappedUnitLocations[unit.unit_id];
-      const realtimeLocation = unitLocations[unit.unit_id];
+      // Get backend route data for this unit
+      const backendRoute = backendRoutes.find(route => route.unit_id === unit.unit_id);
       
-      if (snappedLocation && snappedLocation.isSnapped) {
-        // Return enhanced unit with GPS-snapped position
+      if (backendRoute?.route?.current_position) {
+        // Use backend-calculated current position
         return {
           ...unit,
-          latitude: snappedLocation.latitude,
-          longitude: snappedLocation.longitude,
+          latitude: backendRoute.route.current_position[0],
+          longitude: backendRoute.route.current_position[1],
           isRealtime: true,
-          isSnapped: true,
-          snapDistance: snappedLocation.snapDistance,
-          snapReason: snappedLocation.snapReason,
-          lastUpdate: snappedLocation.timestamp
+          isBackendCalculated: true,
+          progress: backendRoute.route.progress,
+          lastUpdate: Date.now()
         };
-      } else if (realtimeLocation) {
-        // Return enhanced unit with real-time position
+      } else if (unitLocations[unit.unit_id]) {
+        // Fallback to real-time location
         return {
           ...unit,
-          latitude: realtimeLocation.latitude,
-          longitude: realtimeLocation.longitude,
+          latitude: unitLocations[unit.unit_id].latitude,
+          longitude: unitLocations[unit.unit_id].longitude,
           isRealtime: true,
-          isSnapped: false,
-          lastUpdate: realtimeLocation.timestamp
+          isBackendCalculated: false,
+          lastUpdate: unitLocations[unit.unit_id].timestamp
         };
       } else {
-        // Return static unit position
+        // Use original unit position
         return {
           ...unit,
           isRealtime: false,
-          isSnapped: false
+          isBackendCalculated: false
         };
       }
     });
-  }, [selectedUnit, units, unitLocations, snappedUnitLocations]);
+  }, [selectedUnit, units, unitLocations, backendRoutes]);
 
   if (loading) {
     return (
@@ -663,7 +424,6 @@ const UnitsTracking = () => {
 
   return (
     <div className="tracking-layout">
-      {/* Page Header */}
       <div className="tracking-header">
         <div className="container">
           <h1 className="page-title">
@@ -675,7 +435,6 @@ const UnitsTracking = () => {
         </div>
       </div>
 
-      {/* Enhanced Controls Header */}
       <div className="card" style={{ margin: 'var(--space-6)', marginBottom: 'var(--space-4)' }}>
         <div style={{ 
           display: 'flex', 
@@ -684,7 +443,6 @@ const UnitsTracking = () => {
           gap: 'var(--space-6)',
           flexWrap: 'wrap'
         }}>
-          {/* Statistics */}
           <div style={{ flex: 1, minWidth: '300px' }}>
             <div style={{ 
               display: 'grid', 
@@ -716,15 +474,13 @@ const UnitsTracking = () => {
                   <div style={{ fontSize: 'var(--text-xs)' }}>WebSocket Status</div>
                 </div>
               </div>
-              {/* 🆕 GPS Snapping Status Indicator */}
               <div className="route-stat-item" style={{ textAlign: 'center' }}>
-                <div className="stat-icon">{Object.keys(snappedUnitLocations).length > 0 ? '🎯' : '📍'}</div>
-                <div className="stat-value">{Object.keys(snappedUnitLocations).length > 0 ? 'Active' : 'Inactive'}</div>
-                <div className="stat-label">GPS Snapping</div>
+                <div className="stat-icon">🎯</div>
+                <div className="stat-value">Backend</div>
+                <div className="stat-label">Route System</div>
               </div>
             </div>
             
-            {/* Connection Error Display */}
             {connectionError && (
               <div style={{
                 padding: 'var(--space-3)',
@@ -765,7 +521,6 @@ const UnitsTracking = () => {
             )}
           </div>
 
-          {/* Control Buttons */}
           <div style={{ 
             display: 'flex', 
             flexDirection: 'column',
@@ -816,7 +571,6 @@ const UnitsTracking = () => {
           </div>
         </div>
         
-        {/* Route Statistics */}
         {simulationStats.estimatedArrivals.length > 0 && (
           <div style={{
             marginTop: 'var(--space-6)',
@@ -884,7 +638,6 @@ const UnitsTracking = () => {
         )}
       </div>
 
-      {/* Map Container */}
       <div className="card" style={{ 
         margin: 'var(--space-6)',
         marginBottom: 'var(--space-4)',
@@ -897,7 +650,7 @@ const UnitsTracking = () => {
           position: 'relative'
         }}>
           <RealtimeMapView
-            key={`map-${animationKey}`}
+            key={`map-${trackingMode}-${selectedUnit?.unit_id || 'all'}`}
             markers={mapMarkers}
             polylines={realtimeRoutePolylines}
             showRealtimeData={true}
@@ -905,7 +658,6 @@ const UnitsTracking = () => {
             center={selectedUnit ? [selectedUnit.latitude, selectedUnit.longitude] : undefined}
           />
           
-          {/* Enhanced Map Legend */}
           <div className="map-legend">
             <div style={{ 
               fontWeight: 'var(--font-semibold)', 
@@ -929,7 +681,6 @@ const UnitsTracking = () => {
               🚑 Ambulance | 🚒 Fire Truck | 🚓 Police | 🚐 Other Units
             </div>
             
-            {/* Route Status Indicators */}
             {Object.keys(routeFetchStatus).length > 0 && (
               <div style={{
                 marginTop: 'var(--space-3)',
@@ -947,7 +698,7 @@ const UnitsTracking = () => {
                   alignItems: 'center',
                   gap: 'var(--space-1)'
                 }}>
-                  🛣️ Route Status
+                  🗄️ Database Route Status
                 </div>
                 {Object.entries(routeFetchStatus).map(([emergencyId, status]) => (
                   <div key={emergencyId} style={{ 
@@ -1014,7 +765,6 @@ const UnitsTracking = () => {
             )}
           </div>
           
-          {/* Tracking Controls */}
           <div style={{
             position: 'absolute',
             bottom: 'var(--space-4)',
@@ -1046,7 +796,6 @@ const UnitsTracking = () => {
         </div>
       </div>
 
-      {/* Units Table */}
       <div className="card" style={{
         margin: 'var(--space-6)',
         marginTop: 'var(--space-4)',

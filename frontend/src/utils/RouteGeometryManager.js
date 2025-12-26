@@ -19,11 +19,21 @@ class RouteGeometryManager {
       coordinates: coordinates.map(([lon, lat]) => [lat, lon]), // Convert [lon, lat] to [lat, lon] for Leaflet
       distances: distances,
       totalDistance: distances.reduce((sum, d) => sum + d, 0),
-      segments: this.createSegments(coordinates.map(([lon, lat]) => [lat, lon]), distances)
+      segments: this.createSegments(coordinates.map(([lon, lat]) => [lat, lon]), distances),
+      unitId: osrmRoute.unitId || null,
+      emergencyId: osrmRoute.emergencyId || null,
+      timestamp: Date.now()
     };
 
     this.pathCache.set(routeId, processedRoute);
     console.log(`🛣️ Route processed for ${routeId}: ${coordinates.length} points, ${processedRoute.totalDistance.toFixed(2)}km`);
+    console.log(`📊 Route details:`, {
+      coordinates: coordinates.length,
+      totalDistance: `${processedRoute.totalDistance.toFixed(2)}km`,
+      segments: processedRoute.segments.length,
+      unitId: processedRoute.unitId,
+      emergencyId: processedRoute.emergencyId
+    });
     return processedRoute;
   }
 
@@ -96,6 +106,54 @@ class RouteGeometryManager {
       segment.endCoord,
       segmentProgress
     );
+  }
+
+  // Calculate position at given progress fraction (0-1) along route
+  getPositionAtProgress(routeId, progress) {
+    // Validate progress range
+    if (progress < 0 || progress > 1 || isNaN(progress)) {
+      console.warn(`Invalid progress value: ${progress}. Must be between 0 and 1.`);
+      return null;
+    }
+
+    const route = this.pathCache.get(routeId);
+    if (!route) return null;
+
+    // Calculate distance from progress fraction
+    const targetDistance = progress * route.totalDistance;
+    
+    return this.getPositionAtDistance(routeId, targetDistance);
+  }
+
+  // Validate progress value (0-1 range)
+  validateProgress(progress) {
+    if (typeof progress !== 'number' || isNaN(progress)) {
+      return false;
+    }
+    return progress >= 0 && progress <= 1;
+  }
+
+  // Get distance from progress fraction
+  getDistanceFromProgress(routeId, progress) {
+    const route = this.pathCache.get(routeId);
+    if (!route) return null;
+    
+    if (!this.validateProgress(progress)) {
+      return null;
+    }
+    
+    return progress * route.totalDistance;
+  }
+
+  // Calculate progress from distance along route
+  getProgressFromDistance(routeId, distance) {
+    const route = this.pathCache.get(routeId);
+    if (!route) return null;
+    
+    if (distance <= 0) return 0;
+    if (distance >= route.totalDistance) return 1;
+    
+    return distance / route.totalDistance;
   }
 
   // Linear interpolation between two coordinates
