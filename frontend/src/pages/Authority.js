@@ -81,6 +81,14 @@ const Authority = () => {
     setTimeout(() => fetchData(), 1000);
   };
 
+  const handleUnitDeleted = (deletedUnit) => {
+    console.log('✅ Unit deleted:', deletedUnit);
+    setUnits(prev => prev.filter(u => u.unit_id !== deletedUnit.unit_id));
+    setShowDeleteUnit(false);
+    // Refresh data to get updated stats
+    setTimeout(() => fetchData(), 1000);
+  };
+
   const handleEmergencyUpdate = (updatedEmergency) => {
     setEmergencies(prev => 
       prev.map(e => e.request_id === updatedEmergency.request_id ? updatedEmergency : e)
@@ -231,6 +239,19 @@ const Authority = () => {
               </button>
               
               <button
+                onClick={() => setShowDeleteUnit(true)}
+                className="btn btn-danger btn-lg"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  justifyContent: 'center'
+                }}
+              >
+                🗑️ Delete Vehicle
+              </button>
+              
+              <button
                 onClick={() => navigate('/units-tracking')}
                 className="btn btn-secondary btn-lg"
                 style={{
@@ -348,8 +369,16 @@ const Authority = () => {
         onClose={() => setShowAddUnit(false)}
         onUnitAdded={handleUnitAdded}
       />
+
+      {/* Delete Unit Modal */}
+      <DeleteUnit 
+        isOpen={showDeleteUnit}
+        onClose={() => setShowDeleteUnit(false)}
+        onUnitDeleted={handleUnitDeleted}
+      />
     </div>
   );
 };
+
 
 export default Authority;
