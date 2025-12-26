@@ -19,10 +19,10 @@ const createUnitIcon = (unit) => {
   const { unit_id, service_type, status, latitude, longitude } = unit;
   
   const getEmoji = () => {
-    if (service_type === 'AMBULANCE') return '🚑';
-    if (service_type === 'FIRE_TRUCK') return '🚒';
-    if (service_type === 'POLICE') return '🚓';
-    return '🚐';
+    if (service_type === 'AMBULANCE') return '';
+    if (service_type === 'FIRE_TRUCK') return '';
+    if (service_type === 'POLICE') return '';
+    return '';
   };
 
   const getStatusColor = () => {
@@ -397,7 +397,7 @@ function MapView({ markers, center, polylines = [] }) {
             // Fallback for simulated markers without service type info
             markerIcon = L.divIcon({
               className: "ambulance-icon",
-              html: '<div style="font-size:20px; line-height:20px;">🚑</div>',
+              html: '<div style="font-size:20px; line-height:20px;"></div>',
               iconSize: [24, 24],
               iconAnchor: [12, 12],
             });
@@ -415,7 +415,7 @@ function MapView({ markers, center, polylines = [] }) {
               <Popup>
                 {isUnit ? (
                   <div>
-                    <strong>🚑 Unit {m.unit_id}</strong><br/>
+                    <strong> Unit {m.unit_id}</strong><br/>
                     <strong>Type:</strong> {m.service_type}<br/>
                     <strong>Status:</strong> 
                     <span style={{ 

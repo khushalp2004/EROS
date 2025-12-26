@@ -20,9 +20,9 @@ function EmergencyList({
 }) {
   const getEmergencyTypeIcon = (type) => {
     switch (type?.toLowerCase()) {
-      case 'ambulance': return '🚑';
-      case 'fire': return '🚒';
-      case 'police': return '🚓';
+      case 'ambulance': return '';
+      case 'fire': return '';
+      case 'police': return '';
       default: return '🚨';
     }
   };
@@ -141,7 +141,7 @@ function EmergencyList({
                 }}>
                   {getAssignedUnit(emergency) ? (
                     <>
-                      🚐 Unit {getAssignedUnit(emergency)}
+                       Unit {getAssignedUnit(emergency)}
                     </>
                   ) : (
                     '—'

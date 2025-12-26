@@ -173,7 +173,7 @@ const UnitsTracking = () => {
     const updateInterval = setInterval(() => {
       const activeRoutes = backendRouteManager.getAllActiveRoutes();
       setBackendRoutes(activeRoutes);
-      
+
       // Update fetch status
       const status = {};
       activeRoutes.forEach(route => {
@@ -184,9 +184,24 @@ const UnitsTracking = () => {
       });
       setRouteFetchStatus(status);
     }, 2000);
-    
+
     return () => clearInterval(updateInterval);
   }, []);
+
+  // Update backend routes with real-time progress from WebSocket
+  useEffect(() => {
+    // Update route progress in BackendRouteManager when WebSocket data arrives
+    Object.entries(unitLocations).forEach(([unitId, locationData]) => {
+      if (locationData.progress !== undefined) {
+        // Update the progress in the backend route manager
+        const routeData = backendRouteManager.getRouteData(unitId);
+        if (routeData && routeData.route) {
+          routeData.route.progress = locationData.progress;
+          console.log(`📊 Updated progress for unit ${unitId}: ${locationData.progress}`);
+        }
+      }
+    });
+  }, [unitLocations]);
 
   const calculateSimulationStats = () => {
     const activeSims = Object.keys(unitLocations).length;
@@ -258,10 +273,10 @@ const UnitsTracking = () => {
 
   const getServiceEmoji = (serviceType) => {
     switch (serviceType) {
-      case 'AMBULANCE': return '🚑';
-      case 'FIRE_TRUCK': return '🚒';
-      case 'POLICE': return '🚓';
-      default: return '🚐';
+      case 'AMBULANCE': return '';
+      case 'FIRE_TRUCK': return '';
+      case 'POLICE': return '';
+      default: return '';
     }
   };
 
@@ -287,19 +302,28 @@ const UnitsTracking = () => {
     }
   };
 
-  // ✅ SIMPLIFIED: Build polylines using backend route data
+  // ✅ ENHANCED: Build polylines using backend route data with real-time progress
   const realtimeRoutePolylines = React.useMemo(() => {
     const polylines = [];
-    
+
     // Use backend route data directly
     backendRoutes.forEach(routeData => {
       const { unit_id, emergency_id, route, unit } = routeData;
-      
+
       if (!route?.positions || !Array.isArray(route.positions) || route.positions.length === 0) {
         return; // Skip if no route data
       }
-      
-      // Create polyline with backend data
+
+      // Get real-time progress from WebSocket data (backend-calculated)
+      const realtimeLocation = unitLocations[unit_id];
+      const realtimeProgress = realtimeLocation?.progress;
+
+      // Use real-time progress if available, otherwise fallback to route progress
+      const progress = (realtimeProgress !== undefined && realtimeProgress !== null)
+        ? realtimeProgress
+        : (route.progress || 0);
+
+      // Create polyline with backend data and real-time progress
       polylines.push({
         id: `${unit_id}-${emergency_id}`,
         positions: route.positions,
@@ -308,27 +332,28 @@ const UnitsTracking = () => {
         emergencyId: emergency_id,
         serviceType: unit?.service_type,
         isRealtime: true,
-        progress: route.progress || 0,
+        progress: progress,
+        isUsingRealtimeProgress: realtimeProgress !== undefined,
         isUsingCachedRoute: true,
         source: 'backend',
         totalDistance: route.total_distance,
         estimatedDuration: route.estimated_duration
       });
     });
-    
+
     // Filter based on tracking mode
     let filteredPolylines = polylines;
-    
+
     if (trackingMode === 'simulated') {
       filteredPolylines = polylines.filter(route => route.isRealtime);
     } else if (trackingMode === 'selected' && selectedUnit) {
       filteredPolylines = polylines.filter(route => route.unitId === selectedUnit.unit_id);
     }
-    
-    console.log(`🛣️ Backend routes: ${filteredPolylines.length} polylines, ${trackingMode} mode`);
-    
+
+    console.log(`🛣️ Backend routes: ${filteredPolylines.length} polylines, ${trackingMode} mode, real-time progress: ${filteredPolylines.some(p => p.isUsingRealtimeProgress)}`);
+
     return filteredPolylines;
-  }, [backendRoutes, trackingMode, selectedUnit]);
+  }, [backendRoutes, trackingMode, selectedUnit, unitLocations]);
 
   // ✅ SIMPLIFIED: Simple GPS update handling
   const handleUnitLocationUpdate = (data) => {
@@ -678,7 +703,7 @@ const UnitsTracking = () => {
               marginBottom: 'var(--space-2)',
               lineHeight: 1.5
             }}>
-              🚑 Ambulance | 🚒 Fire Truck | 🚓 Police | 🚐 Other Units
+               Ambulance |  Fire Truck |  Police |  Other Units
             </div>
             
             {Object.keys(routeFetchStatus).length > 0 && (

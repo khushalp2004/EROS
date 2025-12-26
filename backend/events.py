@@ -265,14 +265,16 @@ def simulate_unit_movement(app=None):
             if not unit:
                 continue
             
-            # Check if we already have simulation data for this unit
+            # 🔧 CRITICAL: Check if we already have simulation data for this unit
             current_location = unit_locations.get(unit_id)
-            if current_location and current_location.get('progress') is not None:
-                # Continue existing simulation
+            existing_emergency_id = current_location.get('emergency_id') if current_location else None
+            
+            if current_location and current_location.get('progress') is not None and existing_emergency_id == emergency.request_id:
+                # Continue existing simulation for SAME emergency
                 progress = min(1.0, current_location['progress'] + 0.02)  # Move 2% per cycle (slower, more visible)
                 print(f"🔄 Continuing Unit {unit_id} simulation: {progress:.1%}")
             else:
-                # Initialize simulation for this unit
+                # Initialize NEW simulation for this emergency (reset progress to 0)
                 progress = 0.0
                 unit_locations[unit_id] = {
                     'latitude': unit.latitude,
@@ -286,7 +288,10 @@ def simulate_unit_movement(app=None):
                     'end_lon': emergency.longitude,
                     'emergency_id': emergency.request_id
                 }
-                print(f"🔄 Started NEW simulation for Unit {unit_id} to Emergency {emergency.request_id}")
+                if existing_emergency_id != emergency.request_id:
+                    print(f"🔄 RESET simulation for Unit {unit_id} - NEW Emergency {emergency.request_id} (was {existing_emergency_id})")
+                else:
+                    print(f"🔄 Started NEW simulation for Unit {unit_id} to Emergency {emergency.request_id}")
             
             # Calculate current position (get from stored data)
             start_lat = unit_locations[unit_id].get('start_lat', unit.latitude)

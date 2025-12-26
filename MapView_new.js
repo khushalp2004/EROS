@@ -24,10 +24,10 @@ const createUnitIcon = (unit) => {
   const { unit_id, service_type, status, latitude, longitude } = unit;
   
   const getEmoji = () => {
-    if (service_type === 'AMBULANCE') return '🚑';
-    if (service_type === 'FIRE_TRUCK') return '🚒';
-    if (service_type === 'POLICE') return '🚓';
-    return '🚐';
+    if (service_type === 'AMBULANCE') return '';
+    if (service_type === 'FIRE_TRUCK') return '';
+    if (service_type === 'POLICE') return '';
+    return '';
   };
 
   const getStatusColor = () => {
@@ -275,10 +275,10 @@ function AnimatedPolyline({
   // Get service emoji based on service type
   const getServiceEmoji = () => {
     switch (serviceType) {
-      case 'AMBULANCE': return '🚑';
-      case 'FIRE_TRUCK': return '🚒';
-      case 'POLICE': return '🚓';
-      default: return '🚐';
+      case 'AMBULANCE': return '';
+      case 'FIRE_TRUCK': return '';
+      case 'POLICE': return '';
+      default: return '';
     }
   };
 
@@ -390,7 +390,7 @@ function AnimatedPolyline({
         >
           <Popup>
             <div>
-              <strong>🚑 Unit {unitId || 'Unknown'}</strong><br/>
+              <strong> Unit {unitId || 'Unknown'}</strong><br/>
               <strong>Progress:</strong> {(progress * 100).toFixed(1)}%<br/>
               <strong>Status:</strong> En Route<br/>
               <strong>Service:</strong> {serviceType || 'Unknown'}<br/>
@@ -597,7 +597,7 @@ function MapView({ markers, center, polylines = [] }) {
             // Fallback for simulated markers without service type info
             markerIcon = L.divIcon({
               className: "ambulance-icon",
-              html: '<div style="font-size:20px; line-height:20px;">🚑</div>',
+              html: '<div style="font-size:20px; line-height:20px;"></div>',
               iconSize: [24, 24],
               iconAnchor: [12, 12],
             });
@@ -615,7 +615,7 @@ function MapView({ markers, center, polylines = [] }) {
               <Popup>
                 {isUnit ? (
                   <div>
-                    <strong>🚑 Unit {m.unit_id}</strong>
+                    <strong> Unit {m.unit_id}</strong>
                     {m.isRouteConstrained && <span style={{ color: '#007bff' }}> 🛣️</span>}<br/>
                     <strong>Type:</strong> {m.service_type}<br/>
                     <strong>Status:</strong> 

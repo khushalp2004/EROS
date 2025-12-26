@@ -225,6 +225,10 @@ def dispatch_emergency(emergency_id):
         polyline_positions = None
         waypoint_count = 0
 
+    # 🔧 CRITICAL: Ensure fresh route progress for new emergency dispatch
+    # Clear any existing route calculations for this unit (from previous emergencies)
+    RouteCalculation.deactivate_routes_for_unit(nearest_unit.unit_id)
+    
     # Update statuses
     nearest_unit.status = "DISPATCHED"
     nearest_unit.last_updated = datetime.utcnow()
@@ -299,6 +303,13 @@ def dispatch_emergency(emergency_id):
             'waypoint_count': waypoint_count,
             'distance': full_distance,
             'duration': full_duration
+        },
+        'route_progress_reset': {
+            'unit_id': nearest_unit.unit_id,
+            'emergency_id': emergency.request_id,
+            'reset_reason': 'new_emergency_dispatch',
+            'fresh_start': True,
+            'timestamp': datetime.utcnow().isoformat()
         }
     })
     
@@ -312,6 +323,13 @@ def dispatch_emergency(emergency_id):
             'waypoint_count': waypoint_count,
             'distance': full_distance,
             'duration': full_duration
+        },
+        'route_progress_reset': {
+            'unit_id': nearest_unit.unit_id,
+            'emergency_id': emergency.request_id,
+            'reset_reason': 'new_emergency_dispatch',
+            'fresh_start': True,
+            'timestamp': datetime.utcnow().isoformat()
         }
     }, room='unit_tracking')
     
@@ -324,10 +342,17 @@ def dispatch_emergency(emergency_id):
         'route_info': {
             'positions': emergency_data['route_positions'],
             'waypoint_count': waypoint_count
+        },
+        'route_progress_reset': {
+            'unit_id': nearest_unit.unit_id,
+            'emergency_id': emergency.request_id,
+            'reset_reason': 'new_emergency_dispatch',
+            'fresh_start': True,
+            'timestamp': datetime.utcnow().isoformat()
         }
     })
     
-    print(f"🔴 Real-time: Emergency #{emergency.request_id} dispatched to Unit {nearest_unit.unit_id} with {waypoint_count} cached waypoints")
+    print(f"🔄 Fresh dispatch: Emergency #{emergency.request_id} dispatched to Unit {nearest_unit.unit_id} with {waypoint_count} cached waypoints - route progress reset to 0%")
 
     return jsonify({
         "message": "Emergency dispatched successfully",
@@ -365,6 +390,9 @@ def complete_emergency(emergency_id):
     create_emergency_notification(emergency, 'completed')
     create_unit_notification(unit, 'completed', emergency=emergency)
 
+    # Clean up route calculations for this emergency using the new model method
+    routes_cleared = RouteCalculation.deactivate_routes_for_emergency(emergency.request_id)
+    
     # Emit real-time events for emergency completion
     emergency_data = {
         'request_id': emergency.request_id,
@@ -390,14 +418,26 @@ def complete_emergency(emergency_id):
     socketio.emit('emergency_updated', {
         'action': 'completed',
         'emergency': emergency_data,
-        'unit': unit_data
+        'unit': unit_data,
+        'route_reset_info': {
+            'emergency_id': emergency.request_id,
+            'unit_id': unit.unit_id,
+            'routes_cleared': routes_cleared,
+            'reset_timestamp': datetime.utcnow().isoformat()
+        }
     })
     
     # Broadcast to unit tracking room
     socketio.emit('emergency_update', {
         'action': 'completed',
         'emergency': emergency_data,
-        'unit': unit_data
+        'unit': unit_data,
+        'route_reset_info': {
+            'emergency_id': emergency.request_id,
+            'unit_id': unit.unit_id,
+            'routes_cleared': routes_cleared,
+            'reset_timestamp': datetime.utcnow().isoformat()
+        }
     }, room='unit_tracking')
     
     # Update unit status back to available
@@ -405,10 +445,26 @@ def complete_emergency(emergency_id):
         'unit_id': unit.unit_id,
         'status': 'AVAILABLE',
         'emergency_id': emergency.request_id,
-        'completed_emergency': emergency_data
+        'completed_emergency': emergency_data,
+        'route_reset_info': {
+            'emergency_id': emergency.request_id,
+            'unit_id': unit.unit_id,
+            'routes_cleared': routes_cleared,
+            'reset_timestamp': datetime.utcnow().isoformat()
+        }
     })
     
-    print(f"🔴 Real-time: Emergency #{emergency.request_id} completed, Unit {unit.unit_id} now available")
+    # Send specific route progress reset event
+    socketio.emit('route_progress_reset', {
+        'unit_id': unit.unit_id,
+        'emergency_id': emergency.request_id,
+        'reset_reason': 'emergency_completed',
+        'routes_cleared': routes_cleared,
+        'timestamp': datetime.utcnow().isoformat(),
+        'ready_for_new_assignment': True
+    }, room='unit_tracking')
+    
+    print(f"🔄 Route progress reset: Emergency #{emergency.request_id} completed, Unit {unit.unit_id} cleared {routes_cleared} route calculations")
 
     return jsonify({
         "message": f"Emergency {emergency.request_id} completed and unit {unit.unit_id} is now available"

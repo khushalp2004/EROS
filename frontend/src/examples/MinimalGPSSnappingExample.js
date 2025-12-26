@@ -58,7 +58,7 @@ const MinimalGPSSnappingExample = () => {
     // Create vehicle marker
     const vehicleMarker = L.marker([40.7128, -74.0060], {
       icon: L.divIcon({
-        html: '🚑',
+        html: '',
         iconSize: [32, 32],
         className: 'vehicle-marker'
       })
@@ -141,7 +141,7 @@ const MinimalGPSSnappingExample = () => {
       // Update popup with debugging info
       marker.setPopupContent(`
         <div style="min-width: 200px;">
-          <h4>🚑 Emergency Vehicle Tracking</h4>
+          <h4> Emergency Vehicle Tracking</h4>
           <p><strong>Progress:</strong> ${Math.round(progress * 100)}%</p>
           <p><strong>GPS Accuracy:</strong> ${snapResult.isSnapped ? 'SNAPPED TO ROUTE' : 'RAW GPS'}</p>
           <p><strong>Distance from route:</strong> ${snapResult.distance.toFixed(1)}m</p>
@@ -223,7 +223,7 @@ const MinimalGPSSnappingExample = () => {
         <h3>🔍 What's Happening:</h3>
         <ul style={{ margin: '10px 0', paddingLeft: '20px' }}>
           <li><strong>Red Line:</strong> Planned emergency response route</li>
-          <li><strong>🚑 Marker:</strong> Vehicle following the route (snapped to road)</li>
+          <li><strong> Marker:</strong> Vehicle following the route (snapped to road)</li>
           <li><strong>GPS Noise:</strong> Real GPS has ±30m accuracy errors</li>
           <li><strong>Snapping:</strong> Algorithm projects GPS to nearest route point</li>
           <li><strong>Result:</strong> Smooth movement along roads instead of straight lines</li>

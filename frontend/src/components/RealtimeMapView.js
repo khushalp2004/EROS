@@ -21,10 +21,10 @@ const createUnitIcon = (unit, isRealtime = false) => {
   const { unit_id, service_type, status, latitude, longitude } = unit;
   
   const getEmoji = () => {
-    if (service_type === 'AMBULANCE') return '🚑';
-    if (service_type === 'FIRE_TRUCK') return '🚒';
-    if (service_type === 'POLICE') return '🚓';
-    return '🚐';
+    if (service_type === 'AMBULANCE') return '';
+    if (service_type === 'FIRE_TRUCK') return '';
+    if (service_type === 'POLICE') return '';
+    return '';
   };
 
   const getStatusColor = () => {
@@ -124,7 +124,7 @@ const createUnitIcon = (unit, isRealtime = false) => {
 
 const ambulanceIcon = L.divIcon({
   className: "ambulance-icon",
-  html: '<div style="font-size:20px; line-height:20px;">🚑</div>',
+  html: '<div style="font-size:20px; line-height:20px;"></div>',
   iconSize: [24, 24],
   iconAnchor: [12, 12],
 });
@@ -285,10 +285,10 @@ function AnimatedPolyline({
   // Get service emoji based on service type
   const getServiceEmoji = () => {
     switch (serviceType) {
-      case 'AMBULANCE': return '🚑';
-      case 'FIRE_TRUCK': return '🚒';
-      case 'POLICE': return '🚓';
-      default: return '🚐';
+      case 'AMBULANCE': return '';
+      case 'FIRE_TRUCK': return '';
+      case 'POLICE': return '';
+      default: return '';
     }
   };
 
@@ -589,7 +589,7 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
           const isEmergency = m.request_id !== undefined && !isUnit;
           const popupContent = isUnit ? (
             <div>
-              <strong>🚑 Unit {m.unit_id}</strong><br/>
+              <strong> Unit {m.unit_id}</strong><br/>
               <strong>Type:</strong> {m.service_type}<br/>
               <strong>Status:</strong> 
               <span style={{ 

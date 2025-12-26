@@ -19,15 +19,17 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-// Enhanced icons for different unit types and statuses
+// Enhanced icons for different unit types and statuses (without emojis)
 const createUnitIcon = (unit) => {
   const { unit_id, service_type, status, latitude, longitude } = unit;
-  
-  const getEmoji = () => {
-    if (service_type === 'AMBULANCE') return '🚑';
-    if (service_type === 'FIRE_TRUCK') return '🚒';
-    if (service_type === 'POLICE') return '🚓';
-    return '🚐';
+
+  const getServiceColor = () => {
+    switch (service_type) {
+      case 'AMBULANCE': return '#ff4444'; // Red for ambulance
+      case 'FIRE_TRUCK': return '#ff8800'; // Orange for fire truck
+      case 'POLICE': return '#4444ff'; // Blue for police
+      default: return '#666666'; // Gray for others
+    }
   };
 
   const getStatusColor = () => {
@@ -51,6 +53,9 @@ const createUnitIcon = (unit) => {
       default: return status || 'UNKNOWN';
     }
   };
+
+  const serviceColor = getServiceColor();
+  const statusColor = getStatusColor();
 
   return L.divIcon({
     className: "enhanced-unit-icon",
@@ -80,32 +85,38 @@ const createUnitIcon = (unit) => {
         ">
           Unit ${unit_id}
         </div>
-        
-        <!-- Main Icon Container -->
+
+        <!-- Main Icon Container (Service color ring with status center) -->
         <div style="
           position: relative;
           width: 36px;
           height: 36px;
           border-radius: 50%;
-          background: ${getStatusColor()};
+          background: ${serviceColor};
           border: 3px solid white;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 18px;
           box-shadow: 0 4px 8px rgba(0,0,0,0.4);
           z-index: 999;
         ">
-          ${getEmoji()}
+          <!-- Inner status circle -->
+          <div style="
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: ${statusColor};
+            border: 2px solid white;
+          "></div>
         </div>
-        
+
         <!-- Status Badge -->
         <div style="
           position: absolute;
           bottom: -30px;
           left: 50%;
           transform: translateX(-50%);
-          background: ${getStatusColor()};
+          background: ${statusColor};
           color: white;
           padding: 1px 4px;
           border-radius: 8px;
@@ -244,12 +255,14 @@ function MapAutoCenter({ center }) {
   return null;
 }
 
+
+
 /**
  * AnimatedPolyline Component
- * 
+ *
  * Refactored to use OSRM geometry + progress-based animation:
  * - OSRM geometry → polyline (fixed) + progress (dynamic) → animation calculated from both
- * 
+ *
  * Props:
  * - positions: Array of [lat, lng] coordinates from OSRM route geometry
  * - progress: Float (0-1) representing progress along the route
@@ -261,24 +274,36 @@ function MapAutoCenter({ center }) {
  * - routeGeometryManager: Geometry manager for progress calculations (optional)
  * - routeId: Route identifier for geometry manager lookup (optional)
  */
-function AnimatedPolyline({ 
-  positions, 
-  progress = 1, 
-  color = "#0080ff", 
-  originalPositions = [], 
-  serviceType = null, 
-  unitId = null, 
+function AnimatedPolyline({
+  positions,
+  progress = 1,
+  color = "#0080ff",
+  originalPositions = [],
+  serviceType = null,
+  unitId = null,
   routeMovementController = null,
   routeGeometryManager = null,
-  routeId = null
+  routeId = null,
+  unitStatus = null
 }) {
   // Get service emoji based on service type
   const getServiceEmoji = () => {
     switch (serviceType) {
-      case 'AMBULANCE': return '🚑';
-      case 'FIRE_TRUCK': return '🚒';
-      case 'POLICE': return '🚓';
-      default: return '🚐';
+      case 'AMBULANCE': return '';
+      case 'FIRE_TRUCK': return '';
+      case 'POLICE': return '';
+      default: return '';
+    }
+  };
+
+  // Get status color based on unit status
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'ENROUTE': return '#007bff'; // Blue
+      case 'DEPARTED': return '#6c757d'; // Gray
+      case 'ARRIVING': return '#ffc107'; // Yellow
+      case 'ARRIVED': return '#28a745'; // Green
+      default: return '#6c757d'; // Default gray
     }
   };
 
@@ -333,108 +358,53 @@ function AnimatedPolyline({
 
   // Determine final positions
   const fullRoutePositions = originalPositions.length > 0 ? originalPositions : positions;
-  const unitMarkerPosition = getUnitMarkerPosition();
-  const emojiPosition = getEmojiPosition();
-  
+
+  // Calculate current position on route based on progress
+  const currentPosition = getUnitMarkerPosition();
+
   return (
     <>
       {/* 🆕 FULL ROUTE: Draw complete OSRM geometry as main route */}
       {fullRoutePositions.length > 1 && (
         <Polyline
           positions={fullRoutePositions}
-          pathOptions={{ 
-            color: color, 
-            weight: 4, 
+          pathOptions={{
+            color: color,
+            weight: 4,
             opacity: 0.7,
             className: "animated-route full-route-line"
           }}
         />
       )}
-      
-      {/* 🆕 ENHANCED: Unit marker at progress position */}
-      {unitMarkerPosition && (
+
+      {/* 🆕 STATUS INDICATOR: Moving circle showing unit status on route */}
+      {currentPosition && progress > 0 && progress < 1 && unitStatus && (
         <Marker
-          position={unitMarkerPosition}
+          position={currentPosition}
           icon={L.divIcon({
-            className: "unit-marker-at-progress",
+            className: "route-status-indicator",
             html: `
               <div style="
-                position: relative;
-                width: 32px;
-                height: 32px;
-                background: ${color};
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: ${getStatusColor(unitStatus)};
                 border: 3px solid white;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 16px;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.4);
-                z-index: 1000;
-                animation: pulse 2s infinite;
-              ">
-                ${getServiceEmoji()}
-              </div>
-              <style>
-                @keyframes pulse {
-                  0% { transform: scale(1); }
-                  50% { transform: scale(1.1); }
-                  100% { transform: scale(1); }
-                }
-              </style>
+                box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                animation: statusPulse 2s infinite;
+              "></div>
             `,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
           })}
-          zIndexOffset={1000}
+          zIndexOffset={1500}
         >
           <Popup>
-            <div>
-              <strong>🚑 Unit {unitId || 'Unknown'}</strong><br/>
-              <strong>Progress:</strong> {(progress * 100).toFixed(1)}%<br/>
-              <strong>Status:</strong> En Route<br/>
-              <strong>Service:</strong> {serviceType || 'Unknown'}<br/>
-              <strong>Animation:</strong> OSRM Geometry + Progress
-            </div>
-          </Popup>
-        </Marker>
-      )}
-      
-      {/* Service emoji on route (static, for context) - only if no unit marker */}
-      {serviceType && emojiPosition && !unitMarkerPosition && (
-        <Marker
-          position={emojiPosition}
-          icon={L.divIcon({
-            className: "route-static-emoji",
-            html: `
-              <div style="
-                position: relative;
-                width: 28px;
-                height: 28px;
-                background: rgba(255, 255, 255, 0.95);
-                border: 2px solid ${color};
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 14px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                z-index: 800;
-              ">
-                ${getServiceEmoji()}
-              </div>
-            `,
-            iconSize: [28, 28],
-            iconAnchor: [14, 14],
-          })}
-          zIndexOffset={800}
-        >
-          <Popup>
-            <div>
-              <strong>🚩 {serviceType} Route</strong><br/>
-              <small>Unit {unitId || 'Unknown'}</small><br/>
-              <small>Progress: {(progress * 100).toFixed(1)}%</small><br/>
-              <small>Animation: OSRM Geometry + Progress</small>
+            <div style={{ fontSize: '12px', textAlign: 'center' }}>
+              <strong>Unit {unitId}</strong><br/>
+              Status: ${unitStatus}<br/>
+              Progress: ${(progress * 100).toFixed(1)}%<br/>
+              {serviceType}
             </div>
           </Popup>
         </Marker>
@@ -481,7 +451,7 @@ function MapView({ markers, center, polylines = [] }) {
     : defaultCenter);
   const mapZoom = markers.length === 1 ? 14 : 12;
 
-  // 🆕 ENHANCED: Get enhanced polylines with RouteMovementController data
+  // 🆕 ENHANCED: Get enhanced polylines with RouteMovementController data and unit status
   const enhancedPolylines = React.useMemo(() => {
     if (!isControllerReady || !routeMovementControllerRef.current) {
       return polylines;
@@ -489,11 +459,15 @@ function MapView({ markers, center, polylines = [] }) {
 
     return polylines.map(polyline => {
       const unitId = polyline.unitId?.toString();
-      
+
       if (unitId) {
         // Get polyline data from RouteMovementController
         const controllerPolylineData = routeMovementControllerRef.current.getPolylineDataForUnit(unitId);
-        
+
+        // Find corresponding marker to get unit status
+        const correspondingMarker = markers.find(marker => marker.unit_id?.toString() === unitId);
+        const unitStatus = correspondingMarker?.status || 'UNKNOWN';
+
         if (controllerPolylineData) {
           return {
             ...polyline,
@@ -502,14 +476,16 @@ function MapView({ markers, center, polylines = [] }) {
             positions: controllerPolylineData.positions,
             progress: polyline.progress !== undefined ? polyline.progress : controllerPolylineData.progress,
             color: polyline.color || controllerPolylineData.color,
-            originalPositions: polyline.originalPositions || controllerPolylineData.originalPositions
+            originalPositions: polyline.originalPositions || controllerPolylineData.originalPositions,
+            // 🆕 Add unit status for status-based indicator styling
+            unitStatus: unitStatus
           };
         }
       }
-      
+
       return polyline;
     });
-  }, [polylines, isControllerReady]);
+  }, [polylines, markers, isControllerReady]);
 
   // 🆕 ENHANCED: Get unit markers with RouteMovementController positions
   const enhancedMarkers = React.useMemo(() => {
@@ -564,10 +540,21 @@ function MapView({ markers, center, polylines = [] }) {
           .unit-marker-at-progress {
             animation: unitMarkerPulse 2s infinite;
           }
-          
+
+          /* 🆕 STATUS INDICATOR: Moving circle animation */
+          .route-status-indicator {
+            animation: statusPulse 2s infinite;
+          }
+
           @keyframes unitMarkerPulse {
             0% { transform: scale(1); }
             50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+          }
+
+          @keyframes statusPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
             100% { transform: scale(1); }
           }
         `}
@@ -597,7 +584,7 @@ function MapView({ markers, center, polylines = [] }) {
             // Fallback for simulated markers without service type info
             markerIcon = L.divIcon({
               className: "ambulance-icon",
-              html: '<div style="font-size:20px; line-height:20px;">🚑</div>',
+              html: '<div style="font-size:20px; line-height:20px;"></div>',
               iconSize: [24, 24],
               iconAnchor: [12, 12],
             });
@@ -615,31 +602,26 @@ function MapView({ markers, center, polylines = [] }) {
               <Popup>
                 {isUnit ? (
                   <div>
-                    <strong>🚑 Unit {m.unit_id}</strong>
-                    {m.isRouteConstrained && <span style={{ color: '#007bff' }}> 🛣️</span>}<br/>
+                    <strong>Unit {m.unit_id}</strong>
+                    {m.isRouteConstrained && <span style={{ color: '#007bff' }}> (Route-Constrained)</span>}<br/>
                     <strong>Type:</strong> {m.service_type}<br/>
-                    <strong>Status:</strong> 
-                    <span style={{ 
-                      color: m.status === 'AVAILABLE' ? '#28a745' : 
-                             m.status === 'ENROUTE' ? '#007bff' : 
+                    <strong>Status:</strong>
+                    <span style={{
+                      color: m.status === 'AVAILABLE' ? '#28a745' :
+                             m.status === 'ENROUTE' ? '#007bff' :
                              m.status === 'ARRIVED' ? '#ffc107' : '#6c757d',
                       fontWeight: 'bold'
                     }}>
                       {m.status}
                     </span><br/>
                     <strong>Location:</strong> {m.latitude.toFixed(4)}, {m.longitude.toFixed(4)}
-                    {m.isRouteConstrained && (
-                      <>
-                        <br/><strong>Mode:</strong> <span style={{ color: '#007bff' }}>Route-Constrained</span>
-                      </>
-                    )}
                   </div>
                 ) : (
                   <div>
-                    <strong>🚨 Emergency #{m.request_id}</strong><br/>
+                    <strong>Emergency #{m.request_id}</strong><br/>
                     <strong>Type:</strong> {m.emergency_type || m.type || 'Unknown'}<br/>
-                    <strong>Status:</strong> 
-                    <span style={{ 
+                    <strong>Status:</strong>
+                    <span style={{
                       color: m.status === 'PENDING' ? '#ffc107' :
                              m.status === 'APPROVED' ? '#007bff' :
                              m.status === 'ASSIGNED' ? '#28a745' :
@@ -669,6 +651,7 @@ function MapView({ markers, center, polylines = [] }) {
             routeMovementController={routeMovementControllerRef.current}
             routeGeometryManager={routeGeometryManagerRef.current}
             routeId={pl.routeId || `route-${pl.unitId}`}
+            unitStatus={pl.unitStatus}
           />
         ))}
       </MapContainer>

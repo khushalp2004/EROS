@@ -3,6 +3,7 @@ import api from "../api";
 import RealtimeMapView from "../components/RealtimeMapView";
 import EmergencyList from "../components/EmergencyList";
 import { useWebSocketManager, connectionManager } from "../hooks/useWebSocketManager";
+import RouteMovementController from "../utils/RouteMovementController";
 import { 
   isEmergency, 
   isUnit, 
@@ -30,6 +31,9 @@ function Dashboard() {
     estimatedArrivals: []
   });
   
+  // Initialize RouteMovementController for handling unit route animations
+  const routeMovementController = useMemo(() => new RouteMovementController(), []);
+  
   // Real-time unit tracking integration - using centralized WebSocket manager
   const { 
     isConnected: wsConnected, 
@@ -55,12 +59,35 @@ function Dashboard() {
         }
         return prev;
       });
-      showToast(`New ${emergency.emergency_type} emergency #${emergency.request_id} reported!`, 'info', 5000);
+      
+      // Enhanced notification for new emergency with location info
+      const locationInfo = emergency.latitude && emergency.longitude 
+        ? ` at (${emergency.latitude.toFixed(3)}, ${emergency.longitude.toFixed(3)})`
+        : '';
+      showToast(`New ${emergency.emergency_type} emergency #${emergency.request_id} reported${locationInfo}!`, 'info', 5000);
     };
 
     const handleEmergencyUpdated = (data) => {
       console.log('📝 Emergency updated:', data);
-      const { action, emergency } = data;
+      const { action, emergency, unit, route_info, route_progress_reset } = data;
+      
+      // 🔧 CRITICAL: Handle fresh start route reset for new dispatch
+      if (route_progress_reset?.fresh_start) {
+        console.log(`🚀 Fresh dispatch detected for Unit ${route_progress_reset.unit_id} - Emergency ${route_progress_reset.emergency_id}`);
+        
+        // Reset route movement state for fresh start
+        routeMovementController.resetUnitForNewEmergency(route_progress_reset.unit_id.toString());
+        
+        // Clear route cache for the new emergency
+        setRouteCache(prev => {
+          const newCache = { ...prev };
+          delete newCache[route_progress_reset.emergency_id];
+          return newCache;
+        });
+        
+        // Force animation restart for fresh progress calculation
+        setAnimationKey(prev => prev + 1);
+      }
       
       // Update emergency in the list
       setEmergencies(prev => {
@@ -69,18 +96,60 @@ function Dashboard() {
         );
       });
 
-      // Show appropriate message based on action
+      // Update assigned unit if present
+      if (unit) {
+        setUnits(prev => {
+          return prev.map(u => 
+            u.unit_id === unit.unit_id ? { ...u, ...unit } : u
+          );
+        });
+      }
+
+      // Update route cache for the emergency
+      if (route_info?.positions && emergency.request_id) {
+        setRouteCache(prev => ({
+          ...prev,
+          [emergency.request_id]: route_info.positions
+        }));
+      }
+
       if (action === 'assigned') {
-        const assignedUnitId = getAssignedUnit(emergency);
-        showToast(`Emergency #${emergency.request_id} assigned to Unit ${assignedUnitId}`, 'success', 3000);
+        const message = route_progress_reset?.fresh_start 
+          ? `Emergency #${emergency.request_id} assigned to Unit ${unit?.unit_id} - fresh start at 0%`
+          : `Emergency #${emergency.request_id} assigned to Unit ${unit?.unit_id}`;
+        showToast(message, 'info', 3000);
       } else if (action === 'completed') {
-        showToast(`Emergency #${emergency.request_id} completed`, 'success', 3000);
+        // Enhanced completion handling with route reset info
+        if (data.route_reset_info) {
+          const { routes_cleared } = data.route_reset_info;
+          showToast(`Emergency #${emergency.request_id} completed - ${routes_cleared} routes cleared`, 'success', 3000);
+        } else {
+          showToast(`Emergency #${emergency.request_id} completed`, 'success', 2000);
+        }
       }
     };
 
     const handleUnitStatusUpdate = (data) => {
       console.log('📍 Unit status updated:', data);
-      const { unit_id, status, emergency_id } = data;
+      const { unit_id, status, emergency_id, route_reset_info, route_progress_reset } = data;
+      
+      // 🔧 CRITICAL: Handle fresh start route reset for new dispatch
+      if (route_progress_reset?.fresh_start) {
+        console.log(`🚀 Fresh unit status: Unit ${unit_id} dispatched to Emergency ${route_progress_reset.emergency_id} - route progress reset to 0%`);
+        
+        // Reset route movement state for fresh start
+        routeMovementController.resetUnitForNewEmergency(unit_id.toString());
+        
+        // Clear route cache for the new emergency
+        setRouteCache(prev => {
+          const newCache = { ...prev };
+          delete newCache[route_progress_reset.emergency_id];
+          return newCache;
+        });
+        
+        // Force animation restart for fresh progress calculation
+        setAnimationKey(prev => prev + 1);
+      }
       
       // Update unit in the list
       setUnits(prev => {
@@ -90,9 +159,58 @@ function Dashboard() {
       });
 
       if (status === 'DISPATCHED') {
-        showToast(`Unit ${unit_id} dispatched to Emergency #${emergency_id}`, 'info', 3000);
+        const message = route_progress_reset?.fresh_start 
+          ? `Unit ${unit_id} dispatched to Emergency #${emergency_id} - fresh start at 0%`
+          : `Unit ${unit_id} dispatched to Emergency #${emergency_id}`;
+        showToast(message, 'info', 3000);
       } else if (status === 'AVAILABLE') {
-        showToast(`Unit ${unit_id} is now available`, 'success', 2000);
+        // Enhanced message if route was reset
+        if (route_reset_info) {
+          showToast(`Unit ${unit_id} is now available - route progress reset (${route_reset_info.routes_cleared} routes cleared)`, 'success', 3000);
+        } else {
+          showToast(`Unit ${unit_id} is now available`, 'success', 2000);
+        }
+      }
+    };
+
+    // 🔧 NEW: Handle route progress reset events
+    const handleRouteProgressReset = (data) => {
+      console.log('🔄 Route progress reset event received:', data);
+      const { unit_id, emergency_id, routes_cleared, ready_for_new_assignment, reset_reason, fresh_start } = data;
+      
+      if (reset_reason === 'emergency_completed' && ready_for_new_assignment) {
+        // Handle completion reset
+        routeMovementController.resetUnitForNewEmergency(unit_id.toString());
+        
+        // Clear route cache for the completed emergency
+        setRouteCache(prev => {
+          const newCache = { ...prev };
+          delete newCache[emergency_id];
+          return newCache;
+        });
+        
+        // Force animation restart by updating animation key
+        setAnimationKey(prev => prev + 1);
+        
+        console.log(`✅ Route progress reset completed for Unit ${unit_id}: ${routes_cleared} routes cleared`);
+      } else if (reset_reason === 'new_emergency_dispatch' && fresh_start) {
+        // 🔧 CRITICAL: Handle new dispatch reset - force fresh start at 0%
+        console.log(`🚀 Fresh start: Unit ${unit_id} dispatched to Emergency ${emergency_id} - resetting route progress to 0%`);
+        
+        // Reset the unit's route movement state for fresh start
+        routeMovementController.resetUnitForNewEmergency(unit_id.toString());
+        
+        // Clear any existing route cache for this unit/emergency
+        setRouteCache(prev => {
+          const newCache = { ...prev };
+          delete newCache[emergency_id];
+          return newCache;
+        });
+        
+        // Force animation restart to ensure fresh progress calculation
+        setAnimationKey(prev => prev + 1);
+        
+        console.log(`🎯 Route progress reset to 0% for fresh start - Unit ${unit_id} to Emergency ${emergency_id}`);
       }
     };
 
@@ -100,11 +218,13 @@ function Dashboard() {
     const unsubscribeEmergencyCreated = connectionManager.subscribe('emergency_created', handleEmergencyCreated);
     const unsubscribeEmergencyUpdated = connectionManager.subscribe('emergency_updated', handleEmergencyUpdated);
     const unsubscribeUnitStatusUpdate = connectionManager.subscribe('unit_status_update', handleUnitStatusUpdate);
+    const unsubscribeRouteProgressReset = connectionManager.subscribe('route_progress_reset', handleRouteProgressReset);
 
     return () => {
       unsubscribeEmergencyCreated && unsubscribeEmergencyCreated();
       unsubscribeEmergencyUpdated && unsubscribeEmergencyUpdated();
       unsubscribeUnitStatusUpdate && unsubscribeUnitStatusUpdate();
+      unsubscribeRouteProgressReset && unsubscribeRouteProgressReset();
     };
   }, [wsConnected]);
 
@@ -129,10 +249,10 @@ function Dashboard() {
 
   const getServiceEmoji = (serviceType) => {
     switch (serviceType) {
-      case 'AMBULANCE': return '🚑';
-      case 'FIRE_TRUCK': return '🚒';
-      case 'POLICE': return '🚓';
-      default: return '🚐';
+      case 'AMBULANCE': return '';
+      case 'FIRE_TRUCK': return '';
+      case 'POLICE': return '';
+      default: return '';
     }
   };
 
@@ -589,8 +709,18 @@ function Dashboard() {
 
   const handleComplete = async (emergency) => {
     try {
+      // Get the assigned unit before marking as complete
+      const assignedUnitId = getAssignedUnit(emergency);
+      
       await api.post(`/api/authority/complete/${emergency.request_id}`);
-      showToast("Marked complete; unit is now available", "success");
+      
+      // 🔧 ENHANCED: Route reset is now handled automatically via WebSocket events
+      // No need for manual route reset - backend will send route_progress_reset event
+      if (assignedUnitId) {
+        console.log(`📤 Marking emergency ${emergency.request_id} complete - route reset will be handled via WebSocket`);
+      }
+      
+      showToast("Marked complete; unit is now available and ready for new emergency", "success");
       await fetchData();
     } catch (err) {
       console.error("Complete error:", err);
@@ -946,7 +1076,7 @@ function Dashboard() {
                   marginBottom: 'var(--space-2)',
                   lineHeight: 1.5
                 }}>
-                  🚑 Ambulance | 🚒 Fire Truck | 🚓 Police | 🚐 Other Units
+                   Ambulance |  Fire Truck |  Police |  Other Units
                 </div>
                 {trackingMode !== 'all' && (
                   <div style={{ 

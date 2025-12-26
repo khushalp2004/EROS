@@ -538,6 +538,30 @@ class RouteMovementController {
   }
 
   /**
+   * Reset unit movement state when emergency is completed
+   * This ensures units start fresh for new emergencies
+   * @param {string} unitId - Unit identifier
+   */
+  resetUnitForNewEmergency(unitId) {
+    console.log(`🔄 Resetting Unit ${unitId} for new emergency`);
+
+    // Remove existing movement state completely
+    this.activeMovements.delete(unitId);
+    this.routeProgressCache.delete(unitId);
+
+    // Stop any ongoing interpolation
+    if (this.isInterpolating) {
+      if (this.interpolationFrame) {
+        cancelAnimationFrame(this.interpolationFrame);
+        this.interpolationFrame = null;
+      }
+      this.isInterpolating = false;
+    }
+
+    console.log(`✅ Unit ${unitId} reset complete - ready for new emergency`);
+  }
+
+  /**
    * Clear all active movements
    */
   clearAllMovements() {
@@ -582,14 +606,14 @@ class RouteMovementController {
    */
   initializeFromWebSocket(locationUpdate) {
     try {
-      const { unit_id, latitude, longitude, progress, route_data, emergency_id, route_geometry, osrm_route_id } = locationUpdate;
+      const { unit_id, latitude, longitude, progress, route_data, emergency_id, route_geometry, osrm_route_id, is_fresh_dispatch } = locationUpdate;
       
       if (!unit_id || (!route_data && !route_geometry)) {
         console.warn('⚠️ Cannot initialize from WebSocket: missing unitId or route data');
         return { success: false, error: 'Missing required data' };
       }
 
-      console.log(`🔄 Initializing RouteMovementController for Unit ${unit_id} from WebSocket`);
+      console.log(`🔄 Initializing RouteMovementController for Unit ${unit_id} from WebSocket (fresh dispatch: ${is_fresh_dispatch})`);
 
       // 🔧 ENHANCED: Use OSRM route geometry directly if available
       let osrmRouteData;
@@ -613,31 +637,36 @@ class RouteMovementController {
         throw new Error('No route geometry data available');
       }
 
+      // 🔧 CRITICAL: Respect fresh dispatch logic - always start at 0% for fresh dispatches
+      const initialProgress = is_fresh_dispatch ? 0 : (progress || 0);
+      
       // Initialize unit route with enhanced options
       const result = this.initializeUnitRoute(unit_id.toString(), osrmRouteData, {
         emergencyId: emergency_id,
-        initialProgress: progress || 0,
+        initialProgress: initialProgress, // 0 for fresh dispatches, provided progress otherwise
         osrmRouteId: osrm_route_id,
         useDirectOSRM: !!route_geometry,
+        isFreshDispatch: !!is_fresh_dispatch,
         source: 'websocket'
       });
 
       if (result.success) {
         // Update current position based on progress
-        if (progress !== undefined && progress >= 0) {
+        if (initialProgress !== undefined && initialProgress >= 0) {
           const currentPosition = this.geometryManager.getPositionAtDistance(
             result.routeId,
-            progress * this.activeMovements.get(unit_id.toString()).routeData.totalDistance
+            initialProgress * this.activeMovements.get(unit_id.toString()).routeData.totalDistance
           );
           
           if (currentPosition) {
-            this.activeMovements.get(unit_id.toString()).currentProgress = progress;
+            this.activeMovements.get(unit_id.toString()).currentProgress = initialProgress;
             this.activeMovements.get(unit_id.toString()).lastPosition = currentPosition;
             this.activeMovements.get(unit_id.toString()).targetPosition = currentPosition;
           }
         }
 
-        console.log(`✅ RouteMovementController initialized for Unit ${unit_id}: ${(progress * 100).toFixed(1)}% progress using OSRM data`);
+        const progressDisplay = is_fresh_dispatch ? '0% (fresh start)' : `${(initialProgress * 100).toFixed(1)}%`;
+        console.log(`✅ RouteMovementController initialized for Unit ${unit_id}: ${progressDisplay} progress using OSRM data`);
       }
 
       return result;

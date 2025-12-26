@@ -85,7 +85,7 @@ class RouteMarkerRenderer {
         iconUrl = 'data:image/svg+xml;base64,' + btoa(`
           <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
             <circle cx="16" cy="16" r="15" fill="#dc3545" stroke="#fff" stroke-width="2"/>
-            <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold">🚑</text>
+            <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold"></text>
           </svg>
         `);
         iconSize = [32, 32];
@@ -96,7 +96,7 @@ class RouteMarkerRenderer {
         iconUrl = 'data:image/svg+xml;base64,' + btoa(`
           <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
             <circle cx="16" cy="16" r="15" fill="#fd7e14" stroke="#fff" stroke-width="2"/>
-            <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold">🚒</text>
+            <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold"></text>
           </svg>
         `);
         iconSize = [32, 32];
@@ -107,7 +107,7 @@ class RouteMarkerRenderer {
         iconUrl = 'data:image/svg+xml;base64,' + btoa(`
           <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
             <circle cx="16" cy="16" r="15" fill="#007bff" stroke="#fff" stroke-width="2"/>
-            <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold">🚓</text>
+            <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold"></text>
           </svg>
         `);
         iconSize = [32, 32];
@@ -118,7 +118,7 @@ class RouteMarkerRenderer {
         iconUrl = 'data:image/svg+xml;base64,' + btoa(`
           <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
             <circle cx="16" cy="16" r="15" fill="#6c757d" stroke="#fff" stroke-width="2"/>
-            <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold">🚐</text>
+            <text x="16" y="20" text-anchor="middle" fill="white" font-size="16" font-weight="bold"></text>
           </svg>
         `);
         iconSize = [32, 32];

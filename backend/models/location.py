@@ -114,3 +114,71 @@ class RouteCalculation(db.Model):
             'is_active': self.is_active
         }
 
+    @classmethod
+    def deactivate_routes_for_emergency(cls, emergency_id):
+        """
+        Deactivate all route calculations for a completed emergency
+        This preserves history while cleaning up active state
+        """
+        try:
+            routes_to_deactivate = cls.query.filter_by(emergency_id=emergency_id, is_active=True).all()
+            count = 0
+            for route in routes_to_deactivate:
+                route.is_active = False
+                count += 1
+            
+            db.session.commit()
+            print(f"🔄 Deactivated {count} route calculations for Emergency #{emergency_id}")
+            return count
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error deactivating routes for Emergency #{emergency_id}: {e}")
+            return 0
+
+    @classmethod
+    def deactivate_routes_for_unit(cls, unit_id):
+        """
+        Deactivate all route calculations for a specific unit
+        Useful when a unit is reset or reassigned
+        """
+        try:
+            routes_to_deactivate = cls.query.filter_by(unit_id=unit_id, is_active=True).all()
+            count = 0
+            for route in routes_to_deactivate:
+                route.is_active = False
+                count += 1
+            
+            db.session.commit()
+            print(f"🔄 Deactivated {count} route calculations for Unit {unit_id}")
+            return count
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error deactivating routes for Unit {unit_id}: {e}")
+            return 0
+
+    @classmethod
+    def cleanup_old_routes(cls, days_old=7):
+        """
+        Cleanup old inactive route calculations (optional cleanup job)
+        """
+        try:
+            cutoff_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            cutoff_date = cutoff_date.replace(day=cutoff_date.day - days_old)
+            
+            old_routes = cls.query.filter(
+                cls.is_active == False,
+                cls.timestamp < cutoff_date
+            ).all()
+            
+            count = len(old_routes)
+            for route in old_routes:
+                db.session.delete(route)
+            
+            db.session.commit()
+            print(f"🧹 Cleaned up {count} old route calculations older than {days_old} days")
+            return count
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error cleaning up old routes: {e}")
+            return 0
+

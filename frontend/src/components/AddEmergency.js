@@ -130,9 +130,9 @@ function AddEmergency() {
 
   const getEmergencyTypeIcon = (emergencyType) => {
     switch (emergencyType.toLowerCase()) {
-      case 'ambulance': return '🚑';
-      case 'fire': return '🚒';
-      case 'police': return '🚓';
+      case 'ambulance': return '';
+      case 'fire': return '';
+      case 'police': return '';
       default: return '🚨';
     }
   };
@@ -175,9 +175,9 @@ function AddEmergency() {
                   border: '2px solid var(--gray-300)'
                 }}
               >
-                <option value="Ambulance">🚑 Ambulance - Medical Emergency</option>
-                <option value="Fire">🚒 Fire - Fire/Explosion Emergency</option>
-                <option value="Police">🚓 Police - Security/Crime Emergency</option>
+                <option value="Ambulance"> Ambulance - Medical Emergency</option>
+                <option value="Fire"> Fire - Fire/Explosion Emergency</option>
+                <option value="Police"> Police - Security/Crime Emergency</option>
               </select>
               <div className="form-help">
                 Select the type of emergency to ensure the right response team is dispatched

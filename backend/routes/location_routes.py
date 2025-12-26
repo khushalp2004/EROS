@@ -14,45 +14,57 @@ def calculate_route_progress(lat, lng, route_geometry):
     """Calculate progress along route from current position"""
     try:
         import json
-        
+
         # Parse route geometry
         if isinstance(route_geometry, str):
             geometry = json.loads(route_geometry)
         else:
             geometry = route_geometry
-        
+
         coordinates = geometry.get('coordinates', [])
         if not coordinates or len(coordinates) < 2:
             return 0.0
-        
+
         # Convert [lng, lat] to [lat, lng] for consistency
         route_coords = [[coord[1], coord[0]] for coord in coordinates]
-        
-        # Find closest point on route and calculate progress
+
+        # Find the closest point on the route and calculate progress along the route
         min_distance = float('inf')
-        total_distance = 0.0
-        distance_to_point = 0.0
-        
+        best_progress = 0.0
+        total_route_distance = 0.0
+
+        # First, calculate total route distance
         for i in range(len(route_coords) - 1):
             start = route_coords[i]
             end = route_coords[i + 1]
-            
+            segment_distance = haversine_distance(start[0], start[1], end[0], end[1])
+            total_route_distance += segment_distance
+
+        # Now find the closest point and calculate progress
+        cumulative_distance = 0.0
+        for i in range(len(route_coords) - 1):
+            start = route_coords[i]
+            end = route_coords[i + 1]
+
             # Calculate segment distance
             segment_distance = haversine_distance(start[0], start[1], end[0], end[1])
-            total_distance += segment_distance
-            
+
             # Calculate distance from current position to this segment
             point_distance = point_to_segment_distance([lat, lng], start, end)
-            
+
             if point_distance['distance'] < min_distance:
                 min_distance = point_distance['distance']
-                distance_to_point = total_distance - segment_distance + point_distance['distanceAlongSegment']
-        
-        # Calculate progress (0.0 to 1.0)
-        progress = min(1.0, max(0.0, distance_to_point / total_distance)) if total_distance > 0 else 0.0
-        
+                # Progress is the cumulative distance to the start of this segment plus
+                # the distance along this segment to the closest point
+                best_progress = (cumulative_distance + point_distance['distanceAlongSegment']) / total_route_distance
+
+            cumulative_distance += segment_distance
+
+        # Ensure progress is between 0 and 1
+        progress = min(1.0, max(0.0, best_progress))
+
         return progress
-        
+
     except Exception as e:
         print(f"Error calculating route progress: {e}")
         return 0.0
@@ -144,10 +156,11 @@ def update_unit_location():
         if not unit:
             return jsonify({'error': f'Unit {unit_id} not found'}), 404
         
-        # Calculate route progress if unit has active emergency
+        # 🔧 CRITICAL: Calculate route progress with fresh dispatch handling
         route_progress = 0.0
         route_data = None
         emergency_id = None
+        is_fresh_dispatch = False
         
         if unit.assigned_unit:
             # Check for active emergency assignment
@@ -167,11 +180,30 @@ def update_unit_location():
                 ).order_by(RouteCalculation.timestamp.desc()).first()
                 
                 if route_calculation and route_calculation.route_geometry:
-                    route_progress = calculate_route_progress(
-                        latitude, 
-                        longitude, 
-                        route_calculation.route_geometry
-                    )
+                    # 🔧 FIX: Check if this is a fresh dispatch (within 2 minutes)
+                    time_since_dispatch = (datetime.utcnow() - route_calculation.timestamp).total_seconds()
+                    is_fresh_dispatch = time_since_dispatch < 120
+                    
+                    if is_fresh_dispatch:
+                        # 🚀 FRESH DISPATCH: Use conservative progress calculation
+                        route_progress = max(0.0, min(0.1, time_since_dispatch / 300))  # Max 10% in first 2 minutes
+                        print(f"🚨 Fresh dispatch location update: Unit {unit_id}, {time_since_dispatch:.1f}s elapsed, progress: {route_progress:.3f}")
+                    else:
+                        # Use GPS-based progress calculation for established routes
+                        try:
+                            route_progress = calculate_route_progress(
+                                latitude, 
+                                longitude, 
+                                route_calculation.route_geometry
+                            )
+                            # Ensure GPS progress doesn't jump to 100% immediately
+                            route_progress = min(route_progress, 0.95)  # Cap at 95%
+                            print(f"📍 GPS-based progress for Unit {unit_id}: {route_progress:.3f}")
+                        except Exception as e:
+                            print(f"⚠️ GPS progress calculation failed for Unit {unit_id}: {e}")
+                            # Fallback to conservative progress
+                            route_progress = min(time_since_dispatch / (route_calculation.duration or 300), 0.95)
+                    
                     route_data = {
                         'route_id': route_calculation.id,
                         'geometry': route_calculation.route_geometry,
@@ -235,7 +267,10 @@ def update_unit_location():
             'route_geometry': route_calculation.route_geometry if route_calculation else None,  # Full OSRM geometry
             'route_distance': route_calculation.distance if route_calculation else None,  # Route distance
             'route_duration': route_calculation.duration if route_calculation else None,  # Route duration
-            'is_on_route': route_progress > 0 if route_calculation else False  # Whether unit is following route
+            'is_on_route': route_progress > 0 if route_calculation else False,  # Whether unit is following route
+            # 🔧 ENHANCED: Add fresh dispatch metadata for frontend
+            'is_fresh_dispatch': is_fresh_dispatch,
+            'progress_cap': 0.95  # Indicate progress is capped for animation
         }
         
         emit('location_update', location_update_data, namespace='/map', broadcast=True)

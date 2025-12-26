@@ -37,7 +37,7 @@ const createVehicleIcon = (vehicle, isSnapped = false) => {
         box-shadow: 0 4px 8px rgba(0,0,0,0.4);
         z-index: 1000;
       ">
-        🚑
+        
         ${isSnapped ? '<div style="position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; background: #00ff00; border-radius: 50%; border: 2px solid white;"></div>' : ''}
       </div>
     `,
