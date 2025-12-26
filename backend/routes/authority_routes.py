@@ -480,6 +480,7 @@ def get_units():
     for u in units:
         data.append({
             "unit_id": u.unit_id,
+            "unit_vehicle_number": u.unit_vehicle_number,
             "service_type": u.service_type,
             "status": u.status,
             "latitude": u.latitude,

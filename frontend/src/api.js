@@ -53,6 +53,9 @@ export const unitAPI = {
   // Delete unit
   deleteUnit: (unitId) => api.delete(`/api/units/${unitId}`),
 
+  // ✅ NEW: Delete unit by vehicle number
+  deleteUnitByVehicleNumber: (vehicleNumber) => api.delete(`/api/units/vehicle-number/${vehicleNumber}`),
+
   // ✅ NEW: Get route data with polylines_position for animation
   getUnitRoutes: (unitId) => api.get(`/api/unit-routes/${unitId}`),
   

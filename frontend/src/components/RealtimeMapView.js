@@ -472,16 +472,40 @@ function RouteProgressIndicator({ progress, position }) {
   );
 }
 
-function MapView({ markers, center, polylines = [], showRealtimeData = true, animateRoutes = true, mapRef = null }) {
+function MapView({ 
+  markers, 
+  center, 
+  polylines = [], 
+  showRealtimeData = true, 
+  animateRoutes = true, 
+  mapRef = null, 
+  onMapClick = null, 
+  selectionMode = false, 
+  zoom = null,
+  height = "500px" 
+}) {
   const defaultCenter = [19.076, 72.8777];
   const mapCenter = center || (markers.length === 1
     ? [markers[0].latitude, markers[0].longitude]
     : defaultCenter);
-  const mapZoom = markers.length === 1 ? 14 : 12;
+  const mapZoom = zoom || (markers.length === 1 ? 14 : 12);
 
   // Use real-time unit data if enabled
   const realtimeData = useRealtimeUnitMarkers(markers);
   const finalMarkers = showRealtimeData ? realtimeData.markers : markers;
+
+  // Handle map click for location selection
+  const handleMapClick = (e) => {
+    if (selectionMode && onMapClick) {
+      const { lat, lng } = e.latlng;
+      onMapClick(lat, lng);
+    }
+  };
+
+  // Add click event handler to map container
+  const mapContainerProps = selectionMode && onMapClick ? {
+    onclick: handleMapClick
+  } : {};
 
   // ✅ SIMPLIFIED: Process polylines for backend-driven routes
   const enhancedPolylines = React.useMemo(() => {
@@ -506,9 +530,8 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
     });
   }, [polylines, finalMarkers, animateRoutes]);
 
-  if (!finalMarkers || finalMarkers.length === 0) {
-    return <p style={{ marginTop: "10px" }}>No locations to display.</p>;
-  }
+  // Always render the map, even with no markers (for selection mode)
+  const shouldShowEmptyMessage = !finalMarkers || finalMarkers.length === 0;
 
   return (
     <>
@@ -577,7 +600,8 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
         key={`${mapCenter[0]}-${mapCenter[1]}-${mapZoom}-${finalMarkers.length}`}
         center={mapCenter}
         zoom={mapZoom}
-        style={{ height: "500px" }}
+        style={{ height }}
+        {...mapContainerProps}
       >
         {center && <MapAutoCenter center={center} />}
         <TileLayer
@@ -831,6 +855,28 @@ function MapView({ markers, center, polylines = [], showRealtimeData = true, ani
           boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
         }}>
           {realtimeData.isConnected ? '🔴 LIVE' : '⚫ OFFLINE'}
+        </div>
+      )}
+      
+      {/* Empty state message for non-selection mode */}
+      {shouldShowEmptyMessage && !selectionMode && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          padding: '20px',
+          borderRadius: '8px',
+          textAlign: 'center',
+          border: '1px solid #ddd',
+          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+          zIndex: 1000
+        }}>
+          <div style={{ fontSize: '24px', marginBottom: '8px' }}>📍</div>
+          <div style={{ fontSize: '14px', color: '#666' }}>
+            No locations to display
+          </div>
         </div>
       )}
     </>

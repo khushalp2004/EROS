@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import RealtimeMapView from "../components/RealtimeMapView";
+import AddUnit from "../components/AddUnit";
+import DeleteUnit from "../components/DeleteUnit";
 import api, { unitAPI } from "../api";
 import { useWebSocketManager, connectionManager } from "../hooks/useWebSocketManager";
 import backendRouteManager from "../utils/BackendRouteManager";
@@ -28,6 +30,8 @@ const UnitsTracking = () => {
   });
   const [routeFetchStatus, setRouteFetchStatus] = useState({});
   const [backendRoutes, setBackendRoutes] = useState([]);
+  const [showAddUnit, setShowAddUnit] = useState(false);
+  const [showDeleteUnit, setShowDeleteUnit] = useState(false);
 
   const { 
     isConnected, 
@@ -252,6 +256,22 @@ const UnitsTracking = () => {
   const handleShowAllUnits = () => {
     setSelectedUnit(null);
     setTrackingMode('all');
+  };
+
+  const handleUnitAdded = (newUnit) => {
+    console.log('✅ New unit added:', newUnit);
+    setUnits(prev => [...prev, newUnit]);
+    setShowAddUnit(false);
+    // Optionally refresh to get updated data
+    setTimeout(() => fetchUnits(), 1000);
+  };
+
+  const handleUnitDeleted = (deletedUnit) => {
+    console.log('✅ Unit deleted:', deletedUnit);
+    setUnits(prev => prev.filter(u => u.unit_id !== deletedUnit.unit_id));
+    setShowDeleteUnit(false);
+    // Refresh data to get updated stats
+    setTimeout(() => fetchUnits(), 1000);
   };
 
   const handleToggleSimulation = () => {
@@ -580,6 +600,30 @@ const UnitsTracking = () => {
             )}
             
             <button
+              onClick={() => setShowAddUnit(true)}
+              className="btn btn-primary"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                backgroundColor: 'var(--primary-blue)'
+              }}
+            >
+              🚛 Add New Unit
+            </button>
+            
+            <button
+              onClick={() => setShowDeleteUnit(true)}
+              className="btn btn-danger"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                backgroundColor: 'var(--accent-red)'
+              }}
+            >
+              🗑️ Delete Vehicle
+            </button>
+            
+            <button
               onClick={async () => {
                 await fetchUnits();
                 await fetchEmergencies();
@@ -898,6 +942,7 @@ const UnitsTracking = () => {
               <tr>
                 <th>Select</th>
                 <th>Unit ID</th>
+                <th>Vehicle Number</th>
                 <th>Service Type</th>
                 <th>Status</th>
                 <th>Location</th>
@@ -918,6 +963,16 @@ const UnitsTracking = () => {
                   </td>
                   <td style={{ fontWeight: 'var(--font-semibold)' }}>
                     {getServiceEmoji(unit.service_type)} Unit {unit.unit_id}
+                  </td>
+                  <td>
+                    <span className="badge" style={{
+                      backgroundColor: 'var(--gray-600)',
+                      color: 'var(--text-inverse)',
+                      fontSize: 'var(--text-xs)',
+                      fontFamily: 'var(--font-mono)'
+                    }}>
+                      {unit.unit_vehicle_number || 'N/A'}
+                    </span>
                   </td>
                   <td>
                     <span className={`status-badge ${unit.status.toLowerCase()}`}>
@@ -941,6 +996,20 @@ const UnitsTracking = () => {
           </table>
         </div>
       </div>
+
+      {/* Add Unit Modal */}
+      <AddUnit 
+        isOpen={showAddUnit}
+        onClose={() => setShowAddUnit(false)}
+        onUnitAdded={handleUnitAdded}
+      />
+
+      {/* Delete Unit Modal */}
+      <DeleteUnit 
+        isOpen={showDeleteUnit}
+        onClose={() => setShowDeleteUnit(false)}
+        onUnitDeleted={handleUnitDeleted}
+      />
     </div>
   );
 };

@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from models import Unit, UnitLocation
 from models.location import RouteCalculation
 from models.emergency import Emergency
+from models import db
 from datetime import datetime
 import json
 import math
@@ -120,6 +121,7 @@ def get_units():
     for u in units:
         output.append({
             'unit_id': u.unit_id,
+            'unit_vehicle_number': u.unit_vehicle_number,
             'service_type': u.service_type,
             'latitude': u.latitude,
             'longitude': u.longitude,
@@ -128,6 +130,115 @@ def get_units():
         })
     
     return jsonify(output)
+
+@unit_bp.route('/units/vehicle-number/<string:vehicle_number>', methods=['DELETE'])
+def delete_unit_by_vehicle_number(vehicle_number):
+    """Delete a unit by vehicle number"""
+    try:
+        # Validate vehicle number format
+        if not vehicle_number or len(vehicle_number.strip()) < 3 or len(vehicle_number.strip()) > 15:
+            return jsonify({"error": "Vehicle number must be between 3 and 15 characters"}), 400
+        
+        # Find the unit by vehicle number
+        unit = Unit.query.filter_by(unit_vehicle_number=vehicle_number.upper().strip()).first()
+        
+        if not unit:
+            return jsonify({"error": f"Vehicle with number '{vehicle_number}' not found"}), 404
+        
+        # Get unit details before deletion for confirmation
+        unit_data = {
+            'unit_id': unit.unit_id,
+            'unit_vehicle_number': unit.unit_vehicle_number,
+            'service_type': unit.service_type,
+            'status': unit.status
+        }
+        
+        # Delete the unit
+        db.session.delete(unit)
+        db.session.commit()
+        
+        return jsonify({
+            "message": f"Vehicle '{vehicle_number}' deleted successfully",
+            "deleted_unit": unit_data
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to delete vehicle: {str(e)}"}), 500
+
+@unit_bp.route('/units', methods=['POST'])
+def create_unit():
+    """Create a new emergency response unit with vehicle number"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['unit_vehicle_number', 'service_type', 'latitude', 'longitude']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        # Check if vehicle number already exists
+        existing_unit = Unit.query.filter_by(unit_vehicle_number=data['unit_vehicle_number']).first()
+        if existing_unit:
+            return jsonify({"error": "Vehicle number already exists"}), 409
+        
+        # Validate service type
+        valid_service_types = ['Ambulance', 'Fire', 'Police']
+        service_type_input = data['service_type'].strip()
+        
+        # Check for exact match or case-insensitive match
+        if service_type_input not in valid_service_types:
+            # Check for case-insensitive match
+            matching_type = None
+            for valid_type in valid_service_types:
+                if service_type_input.lower() == valid_type.lower():
+                    matching_type = valid_type
+                    break
+            
+            if matching_type:
+                # Use the properly cased version from valid_service_types
+                data['service_type'] = matching_type
+            else:
+                return jsonify({
+                    "error": f"Invalid service type. Must be one of: {valid_service_types}",
+                    "received": service_type_input,
+                    "valid_types": valid_service_types
+                }), 400
+        
+        # Create new unit
+        new_unit = Unit(
+            unit_vehicle_number=data['unit_vehicle_number'].upper(),
+            service_type=data['service_type'],
+            latitude=float(data['latitude']),
+            longitude=float(data['longitude']),
+            status='AVAILABLE'
+        )
+        
+        db.session.add(new_unit)
+        db.session.commit()
+        
+        # Return the created unit
+        unit_data = {
+            'unit_id': new_unit.unit_id,
+            'unit_vehicle_number': new_unit.unit_vehicle_number,
+            'service_type': new_unit.service_type,
+            'latitude': new_unit.latitude,
+            'longitude': new_unit.longitude,
+            'status': new_unit.status,
+            'last_updated': new_unit.last_updated
+        }
+        
+        return jsonify({
+            "message": "Unit created successfully",
+            "unit": unit_data
+        }), 201
+        
+    except ValueError as e:
+        return jsonify({"error": f"Invalid coordinate values: {str(e)}"}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to create unit: {str(e)}"}), 500
 
 @unit_bp.route('/unit-routes/<int:unit_id>', methods=['GET'])
 def get_unit_routes(unit_id):
@@ -306,6 +417,7 @@ def get_active_unit_routes():
             "unit_id": route_calc.unit_id,
             "unit": {
                 "unit_id": unit.unit_id,
+                "unit_vehicle_number": unit.unit_vehicle_number,
                 "service_type": unit.service_type,
                 "status": unit.status,
                 "latitude": unit.latitude,

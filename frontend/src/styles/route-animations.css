@@ -211,3 +211,47 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 0 20px rgba(220, 53, 69, 0.6);
   }
 }
+
+/* Source and Destination Marker Animations */
+.source-marker, .destination-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.source-marker {
+  animation: sourcePulse 2s ease-in-out infinite;
+}
+
+@keyframes sourcePulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+}
+
+.destination-marker {
+  animation: destinationPulse 2s ease-in-out infinite;
+}
+
+@keyframes destinationPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.5);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+}
