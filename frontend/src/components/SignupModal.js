@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { authAPI } from '../api';
 
 export default function SignupModal({ isOpen, onClose }) {
@@ -15,6 +15,42 @@ export default function SignupModal({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
+  const [canResend, setCanResend] = useState(true);
+  const [resendCountdown, setResendCountdown] = useState(0);
+
+  // Countdown timer for resend button
+  useEffect(() => {
+    let interval;
+    if (resendCountdown > 0) {
+      interval = setInterval(() => {
+        setResendCountdown(prev => {
+          if (prev <= 1) {
+            setCanResend(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendCountdown]);
+
+  // Reset states when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setVerificationPending(false);
+      setSuccess(false);
+      setError('');
+      setResendMessage('');
+      setCanResend(true);
+      setResendCountdown(0);
+      setLoading(false);
+      setResendLoading(false);
+    }
+  }, [isOpen]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -56,23 +92,11 @@ export default function SignupModal({ isOpen, onClose }) {
       });
 
       if (response.data && response.data.success) {
-        // Signup successful
+        // Signup successful - show verification pending state
         setSuccess(true);
-        setTimeout(() => {
-          onClose();
-          setSuccess(false);
-          // Reset form
-          setFormData({
-            email: '',
-            password: '',
-            confirmPassword: '',
-            firstName: '',
-            lastName: '',
-            phone: '',
-            organization: '',
-            role: 'admin'
-          });
-        }, 3000);
+        setVerificationPending(true);
+        setError('');
+        // Don't auto-close - keep popup open for verification
       } else {
         // Signup failed
         setError(response.data?.message || 'Signup failed. Please try again.');
@@ -90,6 +114,48 @@ export default function SignupModal({ isOpen, onClose }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleResendVerification = async () => {
+    if (!canResend || !formData.email) return;
+    
+    setResendLoading(true);
+    setResendMessage('');
+    setCanResend(false);
+    setResendCountdown(60); // 60 second cooldown
+    
+    try {
+      const response = await authAPI.resendVerificationUnauth(formData.email);
+      
+      if (response.data && response.data.success) {
+        setResendMessage('Verification email sent successfully!');
+      } else {
+        setResendMessage(response.data?.message || 'Failed to resend verification email.');
+        setCanResend(true); // Re-enable on error
+        setResendCountdown(0);
+      }
+    } catch (err) {
+      console.error('Resend verification error:', err);
+      setResendMessage('Failed to resend verification email. Please try again.');
+      setCanResend(true); // Re-enable on error
+      setResendCountdown(0);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setFormData({
+      email: '',
+      password: '',
+      confirmPassword: '',
+      firstName: '',
+      lastName: '',
+      phone: '',
+      organization: '',
+      role: 'admin'
+    });
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -139,7 +205,127 @@ export default function SignupModal({ isOpen, onClose }) {
           </p>
         </div>
 
-        {success ? (
+        {verificationPending ? (
+          <div>
+            <div style={{
+              padding: 'var(--space-4)',
+              backgroundColor: 'var(--info-bg)',
+              color: 'var(--info-text)',
+              borderRadius: 'var(--radius-md)',
+              textAlign: 'center',
+              marginBottom: 'var(--space-4)'
+            }}>
+              <h3 style={{ margin: '0 0 var(--space-2) 0' }}>📧 Verification Email Sent!</h3>
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
+                We've sent a verification link to <strong>{formData.email}</strong>. 
+                Please check your email and click the verification link to complete your registration.
+              </p>
+            </div>
+
+            {/* Resend Verification Section */}
+            <div style={{
+              padding: 'var(--space-4)',
+              backgroundColor: 'var(--bg-secondary)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: 'var(--space-4)'
+            }}>
+              <h4 style={{ 
+                margin: '0 0 var(--space-3) 0',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--font-medium)',
+                color: 'var(--text-primary)'
+              }}>
+                Didn't receive the email?
+              </h4>
+              
+              <button
+                onClick={handleResendVerification}
+                disabled={!canResend || resendLoading}
+                style={{
+                  width: '100%',
+                  padding: 'var(--space-3)',
+                  border: '1px solid var(--primary-blue)',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: canResend && !resendLoading ? 'var(--primary-blue)' : 'var(--gray-300)',
+                  color: 'var(--text-inverse)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 'var(--font-medium)',
+                  cursor: canResend && !resendLoading ? 'pointer' : 'not-allowed',
+                  transition: 'all var(--transition-fast)',
+                  marginBottom: 'var(--space-3)'
+                }}
+              >
+                {resendLoading ? 'Sending...' : canResend ? 'Resend Verification Email' : `Resend in ${resendCountdown}s`}
+              </button>
+
+              {resendMessage && (
+                <div style={{
+                  padding: 'var(--space-2)',
+                  backgroundColor: resendMessage.includes('success') ? 'var(--success-bg)' : 'var(--warning-bg)',
+                  color: resendMessage.includes('success') ? 'var(--success-text)' : 'var(--warning-text)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: 'var(--text-xs)',
+                  textAlign: 'center'
+                }}>
+                  {resendMessage}
+                </div>
+              )}
+            </div>
+
+            {/* Instructions */}
+            <div style={{
+              padding: 'var(--space-3)',
+              backgroundColor: 'var(--gray-50)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: 'var(--space-4)'
+            }}>
+              <h4 style={{ 
+                margin: '0 0 var(--space-2) 0',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--font-medium)',
+                color: 'var(--text-secondary)'
+              }}>
+                Instructions:
+              </h4>
+              <ul style={{
+                margin: 0,
+                paddingLeft: 'var(--space-4)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-muted)',
+                lineHeight: 1.4
+              }}>
+                <li>Check your email inbox (and spam folder)</li>
+                <li>Click the verification link in the email</li>
+                <li>The link expires after 24 hours</li>
+                <li>After verification, you can log in to your account</li>
+              </ul>
+            </div>
+
+            {/* Manual Close Option */}
+            <div style={{ 
+              display: 'flex', 
+              gap: 'var(--space-3)',
+              justifyContent: 'center'
+            }}>
+              <button
+                onClick={handleCloseModal}
+                style={{
+                  padding: 'var(--space-3) var(--space-6)',
+                  border: '1px solid var(--gray-300)',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-secondary)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 'var(--font-medium)',
+                  cursor: 'pointer',
+                  transition: 'all var(--transition-fast)'
+                }}
+              >
+                Close Modal
+              </button>
+            </div>
+          </div>
+        ) : success ? (
           <div style={{
             padding: 'var(--space-4)',
             backgroundColor: 'var(--success-bg)',
@@ -149,7 +335,7 @@ export default function SignupModal({ isOpen, onClose }) {
           }}>
             <h3 style={{ margin: '0 0 var(--space-2) 0' }}>✅ Signup Successful!</h3>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
-              Please check your email for verification instructions. This modal will close automatically.
+              Account created successfully.
             </p>
           </div>
         ) : (
@@ -415,7 +601,7 @@ export default function SignupModal({ isOpen, onClose }) {
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleCloseModal}
                 style={{
                   flex: 1,
                   padding: 'var(--space-3)',

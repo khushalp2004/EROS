@@ -127,6 +127,9 @@ export const authAPI = {
   // Verify email with token
   verifyEmail: (token) => api.get(`/api/auth/verify-email/${token}`),
   
+  // Resend verification email (unauthenticated)
+  resendVerificationUnauth: (email) => api.post('/api/auth/resend-verification-unauth', { email }),
+  
   // Get current user profile
   getProfile: () => api.get('/api/auth/profile'),
   

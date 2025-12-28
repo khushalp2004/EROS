@@ -479,6 +479,56 @@ def resend_verification():
             'message': f'Resend verification failed: {str(e)}'
         }), 500
 
+@auth_bp.route('/resend-verification-unauth', methods=['POST'])
+def resend_verification_unauth():
+    """
+    Resend verification email to unauthenticated user by email
+    POST /api/auth/resend-verification-unauth
+    
+    Request Body:
+    {
+        "email": "user@example.com"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "message": "If the email exists, verification instructions have been sent"
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'email' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'Email is required'
+            }), 400
+        
+        email = data['email'].strip().lower()
+        
+        # Validate email format
+        if not validate_email(email):
+            return jsonify({
+                'success': False,
+                'message': 'Invalid email format'
+            }), 400
+        
+        # Resend verification email
+        success, message = AuthService.resend_verification_email_unauth(email)
+        
+        # Always return success message for security (don't reveal if email exists)
+        return jsonify({
+            'success': True,
+            'message': message
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Resend verification failed: {str(e)}'
+        }), 500
+
 @auth_bp.route('/change-password', methods=['POST'])
 @jwt_required()
 def change_password():

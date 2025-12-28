@@ -202,6 +202,45 @@ class AuthService:
             return False, f"Failed to send verification email: {str(e)}"
     
     @staticmethod
+    def resend_verification_email_unauth(email):
+        """
+        Resend verification email to unauthenticated user by email
+        
+        Args:
+            email (str): User email
+            
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        try:
+            # Validate email format
+            if not validate_email_format(email):
+                return False, "Invalid email format"
+            
+            # Find user by email
+            user = User.find_by_email(email)
+            
+            if not user:
+                # Don't reveal if email exists or not
+                return True, "If the email exists, verification instructions have been sent"
+            
+            if user.is_verified:
+                return False, "Email is already verified"
+            
+            # Generate new verification token
+            token = user.generate_verification_token()
+            user.save()
+            
+            # Send verification email
+            from services.email_service import email_service
+            email_service.send_verification_email(user, token)
+            
+            return True, "Verification email sent successfully"
+            
+        except Exception as e:
+            return False, f"Failed to send verification email: {str(e)}"
+    
+    @staticmethod
     def initiate_password_reset(email):
         """
         Initiate password reset process

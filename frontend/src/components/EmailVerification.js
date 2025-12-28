@@ -8,52 +8,76 @@ export default function EmailVerification() {
   const [status, setStatus] = useState('verifying'); // verifying, success, error
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [verificationStep, setVerificationStep] = useState('Initializing...');
 
   useEffect(() => {
     const verifyEmail = async () => {
+      console.log('EmailVerification: Starting verification with token:', token);
+      
       if (!token) {
+        console.log('EmailVerification: No token provided');
         setStatus('error');
         setMessage('Invalid verification link. No token provided.');
-        setLoading(false);
+        setLoading(false); // Only stop loading if no token
+        setVerificationStep('No token provided');
         return;
       }
 
+      setVerificationStep('Validating token...');
+
       try {
-        console.log('Verifying email with token:', token);
+        console.log('EmailVerification: Making API call to verify email');
+        setVerificationStep('Contacting verification server...');
         
         const response = await authAPI.verifyEmail(token);
         
-        if (response.data && response.data.success) {
+        console.log('EmailVerification: API Response received:', response);
+        console.log('EmailVerification: Response data:', response.data);
+        console.log('EmailVerification: Response status:', response.status);
+        
+        setVerificationStep('Processing verification result...');
+        
+        // Check if the response indicates success
+        if (response.data && response.data.success === true) {
+          console.log('EmailVerification: Verification successful');
           setStatus('success');
           setMessage(response.data.message || 'Email verified successfully!');
+          setLoading(false); // Only stop loading on success
+          setVerificationStep('Verification completed successfully!');
           
-          // Show success message for 3 seconds before redirecting
+          // Redirect to login after 3 seconds
           setTimeout(() => {
             navigate('/login?verified=true');
           }, 3000);
         } else {
+          console.log('EmailVerification: Verification failed - response indicates failure');
           setStatus('error');
           setMessage(response.data?.message || 'Email verification failed. Please try again.');
+          setVerificationStep('Verification failed - ready for retry');
+          // Keep loading true for retry functionality
         }
       } catch (error) {
-        console.error('Email verification error:', error);
+        console.error('EmailVerification: API Error:', error);
+        console.log('EmailVerification: Error response:', error.response);
+        console.log('EmailVerification: Error data:', error.response?.data);
+        
+        setVerificationStep('Network error detected');
+        
+        let errorMessage = 'An unexpected error occurred. Please try again.';
         
         if (error.response) {
           // Server responded with error status
-          const errorMessage = error.response.data?.message || 'Verification failed. Please try again.';
-          setStatus('error');
-          setMessage(errorMessage);
+          console.log('EmailVerification: Server error with status:', error.response.status);
+          errorMessage = error.response.data?.message || 'Verification failed. Please try again.';
         } else if (error.request) {
           // Network error
-          setStatus('error');
-          setMessage('Network error. Please check your connection and try again.');
-        } else {
-          // Other error
-          setStatus('error');
-          setMessage('An unexpected error occurred. Please try again.');
+          console.log('EmailVerification: Network error');
+          errorMessage = 'Network error. Please check your connection and try again.';
         }
-      } finally {
-        setLoading(false);
+        
+        setStatus('error');
+        setMessage(errorMessage);
+        // Keep loading true for retry functionality
       }
     };
 
@@ -68,15 +92,25 @@ export default function EmailVerification() {
     setLoading(true);
     setStatus('verifying');
     setMessage('');
+    setVerificationStep('Retrying verification...');
     
     // Re-run the verification
     const verifyEmail = async () => {
       try {
+        console.log('EmailVerification: Retrying verification with token:', token);
+        setVerificationStep('Retrying verification...');
+        
         const response = await authAPI.verifyEmail(token);
         
-        if (response.data && response.data.success) {
+        console.log('EmailVerification: Retry API Response:', response);
+        
+        setVerificationStep('Processing retry result...');
+        
+        if (response.data && response.data.success === true) {
           setStatus('success');
           setMessage(response.data.message || 'Email verified successfully!');
+          setLoading(false);
+          setVerificationStep('Verification completed successfully!');
           
           setTimeout(() => {
             navigate('/login?verified=true');
@@ -84,13 +118,15 @@ export default function EmailVerification() {
         } else {
           setStatus('error');
           setMessage(response.data?.message || 'Email verification failed. Please try again.');
+          setVerificationStep('Retry failed - ready for another attempt');
+          // Keep loading true for retry functionality
         }
       } catch (error) {
-        console.error('Email verification error:', error);
+        console.error('EmailVerification: Retry error:', error);
         setStatus('error');
         setMessage('Verification failed. Please try again.');
-      } finally {
-        setLoading(false);
+        setVerificationStep('Retry failed due to error');
+        // Keep loading true for retry functionality
       }
     };
     
@@ -158,8 +194,9 @@ export default function EmailVerification() {
         <div style={{
           fontSize: '4rem',
           marginBottom: 'var(--space-4)',
-          opacity: loading && status === 'verifying' ? '0.7' : '1',
-          animation: loading && status === 'verifying' ? 'spin 2s linear infinite' : 'none'
+          opacity: loading && status === 'verifying' ? '0.9' : '1',
+          animation: loading && status === 'verifying' ? 'spin 2s linear infinite' : 'none',
+          transition: 'all 0.3s ease'
         }}>
           {getStatusIcon()}
         </div>
@@ -188,12 +225,27 @@ export default function EmailVerification() {
           lineHeight: 1.5
         }}>
           {loading && status === 'verifying' && (
-            <p style={{ margin: 0 }}>
-              Please wait while we verify your email address...
-            </p>
+            <div>
+              <p style={{ margin: '0 0 var(--space-2) 0' }}>
+                Please wait while we verify your email address...
+              </p>
+              {verificationStep && (
+                <div style={{
+                  padding: 'var(--space-2)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--font-medium)',
+                  textAlign: 'center',
+                  marginTop: 'var(--space-2)'
+                }}>
+                  {verificationStep}
+                </div>
+              )}
+            </div>
           )}
           
-          {message && (
+          {message && !loading && (
             <p style={{ margin: 0 }}>{message}</p>
           )}
         </div>

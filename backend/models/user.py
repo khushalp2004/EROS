@@ -100,7 +100,8 @@ class User(db.Model):
     def generate_verification_token(self):
         """Generate and set a new verification token"""
         self.verification_token = self._generate_verification_token()
-        self.verification_expires_at = datetime.utcnow()
+        from datetime import timedelta
+        self.verification_expires_at = datetime.utcnow() + timedelta(hours=24)
         return self.verification_token
     
     def generate_password_reset_token(self):

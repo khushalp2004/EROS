@@ -403,7 +403,6 @@ class EmailService:
                             <li>Log in to your account</li>
                             <li>Access the Dashboard for system overview</li>
                             <li>Track emergency response units in real-time</li>
-                            <li>Report emergencies and track their status</li>
                             <li>View notifications and system updates</li>
                         </ul>
                         
