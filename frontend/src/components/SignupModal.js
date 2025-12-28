@@ -15,6 +15,8 @@ export default function SignupModal({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [verificationPending, setVerificationPending] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
@@ -443,24 +445,55 @@ export default function SignupModal({ isOpen, onClose }) {
                 }}>
                   Password *
                 </label>
-                <input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  placeholder="Enter password"
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: 'var(--text-sm)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    boxSizing: 'border-box'
-                  }}
-                  required
-                />
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    placeholder="Enter password"
+                    style={{
+                      width: '100%',
+                      padding: 'var(--space-3)',
+                      paddingRight: 'var(--space-10)',
+                      border: '1px solid var(--gray-300)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: 'var(--text-sm)',
+                      backgroundColor: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      boxSizing: 'border-box'
+                    }}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: 'var(--space-3)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 'var(--space-1)',
+                      color: 'var(--text-muted)',
+                      fontSize: 'var(--text-sm)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'color var(--transition-fast)'
+                    }}
+                    onMouseOver={(e) => e.target.style.color = 'var(--text-primary)'}
+                    onMouseOut={(e) => e.target.style.color = 'var(--text-muted)'}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? '👁️‍🗨️' : '👁️'}
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -473,24 +506,55 @@ export default function SignupModal({ isOpen, onClose }) {
                 }}>
                   Confirm Password *
                 </label>
-                <input
-                  type="password"
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  placeholder="Confirm password"
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: 'var(--text-sm)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    boxSizing: 'border-box'
-                  }}
-                  required
-                />
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                    placeholder="Confirm password"
+                    style={{
+                      width: '100%',
+                      padding: 'var(--space-3)',
+                      paddingRight: 'var(--space-10)',
+                      border: '1px solid var(--gray-300)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: 'var(--text-sm)',
+                      backgroundColor: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      boxSizing: 'border-box'
+                    }}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: 'var(--space-3)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 'var(--space-1)',
+                      color: 'var(--text-muted)',
+                      fontSize: 'var(--text-sm)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'color var(--transition-fast)'
+                    }}
+                    onMouseOver={(e) => e.target.style.color = 'var(--text-primary)'}
+                    onMouseOut={(e) => e.target.style.color = 'var(--text-muted)'}
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    title={showConfirmPassword ? "Hide password" : "Show password"}
+                  >
+                    {showConfirmPassword ? '👁️‍🗨️' : '👁️'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -579,9 +643,8 @@ export default function SignupModal({ isOpen, onClose }) {
                   boxSizing: 'border-box'
                 }}
               >
-                <option value="admin">Admin</option>
                 <option value="authority">Authority</option>
-                <option value="reporter">Reporter</option>
+                <option value="admin">Admin</option>
               </select>
             </div>
 

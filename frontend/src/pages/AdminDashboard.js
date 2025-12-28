@@ -496,7 +496,6 @@ function AdminDashboard() {
                     <option value="">All Roles</option>
                     <option value="admin">Admin</option>
                     <option value="authority">Authority</option>
-                    <option value="reporter">Reporter</option>
                   </select>
                   
                   <select

@@ -50,46 +50,50 @@ export default function Navigation() {
           📝 Reporter
         </Link>
 
-        {/* Conditional navigation based on authentication */}
+        {/* Conditional navigation based on authentication and role */}
         {isAuthenticated ? (
           <>
-            {/* Show Dashboard and Units Tracking when authenticated */}
-            <Link 
-              to="/dashboard" 
-              className="nav-link"
-              style={{
-                textDecoration: 'none',
-                color: 'var(--text-secondary)',
-                fontWeight: 'var(--font-medium)',
-                padding: 'var(--space-3) var(--space-4)',
-                borderRadius: 'var(--radius-lg)',
-                transition: 'all var(--transition-fast)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                fontSize: 'var(--text-sm)'
-              }}
-            >
-              📊 Dashboard
-            </Link>
-            <Link 
-              to="/units-tracking" 
-              className="nav-link"
-              style={{
-                textDecoration: 'none',
-                color: 'var(--text-secondary)',
-                fontWeight: 'var(--font-medium)',
-                padding: 'var(--space-3) var(--space-4)',
-                borderRadius: 'var(--radius-lg)',
-                transition: 'all var(--transition-fast)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                fontSize: 'var(--text-sm)'
-              }}
-            >
-              📍 Units Tracking
-            </Link>
+            {/* Dashboard and Units Tracking - only for authority users */}
+            {user?.role === 'authority' && (
+              <>
+                <Link 
+                  to="/dashboard" 
+                  className="nav-link"
+                  style={{
+                    textDecoration: 'none',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 'var(--font-medium)',
+                    padding: 'var(--space-3) var(--space-4)',
+                    borderRadius: 'var(--radius-lg)',
+                    transition: 'all var(--transition-fast)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    fontSize: 'var(--text-sm)'
+                  }}
+                >
+                  📊 Dashboard
+                </Link>
+                <Link 
+                  to="/units-tracking" 
+                  className="nav-link"
+                  style={{
+                    textDecoration: 'none',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 'var(--font-medium)',
+                    padding: 'var(--space-3) var(--space-4)',
+                    borderRadius: 'var(--radius-lg)',
+                    transition: 'all var(--transition-fast)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    fontSize: 'var(--text-sm)'
+                  }}
+                >
+                  📍 Units Tracking
+                </Link>
+              </>
+            )}
             
             {/* Admin link - only visible to admin users */}
             {user?.role === 'admin' && (

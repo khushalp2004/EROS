@@ -171,14 +171,15 @@ def login():
         password = data.get('password', '')
         
         # Authenticate user
-        success, message, user = AuthService.authenticate_user(email, password)
+        status, message, user = AuthService.authenticate_user(email, password)
         
-        if success:
-            # Generate tokens
+        if status == 'success':
+            # Generate tokens for approved users
             tokens = AuthService.generate_tokens(user)
             
             return jsonify({
                 'success': True,
+                'status': 'success',
                 'message': message,
                 'access_token': tokens['access_token'],
                 'refresh_token': tokens['refresh_token'],
@@ -186,9 +187,51 @@ def login():
                 'expires_in': tokens['expires_in'],
                 'user': user.to_dict()
             }), 200
-        else:
+            
+        elif status == 'pending_approval':
+            # User is verified but not approved - don't generate tokens
+            return jsonify({
+                'success': True,
+                'status': 'pending_approval',
+                'message': message,
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'role': user.role,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'is_verified': user.is_verified,
+                    'is_approved': user.is_approved,
+                    'created_at': user.created_at.isoformat()
+                }
+            }), 200
+            
+        elif status == 'not_verified':
             return jsonify({
                 'success': False,
+                'status': 'not_verified',
+                'message': message
+            }), 401
+            
+        elif status == 'account_locked':
+            return jsonify({
+                'success': False,
+                'status': 'account_locked',
+                'message': message
+            }), 423  # Locked status
+            
+        elif status == 'account_deactivated':
+            return jsonify({
+                'success': False,
+                'status': 'account_deactivated',
+                'message': message
+            }), 403  # Forbidden status
+            
+        else:  # invalid_credentials
+            # For security, use generic message and 401 status
+            return jsonify({
+                'success': False,
+                'status': 'invalid_credentials',
                 'message': message
             }), 401
             
@@ -707,6 +750,75 @@ def reset_password():
         return jsonify({
             'success': False,
             'message': f'Password reset failed: {str(e)}'
+        }), 500
+
+@auth_bp.route('/check-approval-status', methods=['POST'])
+def check_approval_status():
+    """
+    Check if pending approval user has been approved
+    POST /api/auth/check-approval-status
+    
+    Request Body:
+    {
+        "email": "user@example.com"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "approved": false,
+        "user": {
+            "id": 1,
+            "email": "user@example.com",
+            "role": "reporter",
+            "first_name": "John",
+            "last_name": "Doe",
+            "is_verified": true,
+            "is_approved": false
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'email' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'Email is required'
+            }), 400
+        
+        email = data['email'].strip().lower()
+        
+        # Find user by email
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
+            return jsonify({
+                'success': False,
+                'message': 'User not found'
+            }), 404
+        
+        # Return user status
+        return jsonify({
+            'success': True,
+            'approved': user.is_approved,
+            'verified': user.is_verified,
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'role': user.role,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_verified': user.is_verified,
+                'is_approved': user.is_approved,
+                'created_at': user.created_at.isoformat()
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Status check failed: {str(e)}'
         }), 500
 
 @auth_bp.route('/status', methods=['GET'])

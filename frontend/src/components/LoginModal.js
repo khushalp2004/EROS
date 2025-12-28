@@ -8,6 +8,7 @@ export default function LoginModal({ isOpen, onClose }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { login } = useAuth();
@@ -33,24 +34,61 @@ export default function LoginModal({ isOpen, onClose }) {
       });
 
       if (response.data && response.data.success) {
-        // Login successful
-        login(response.data.user, response.data.access_token);
-        onClose();
-
-        // Reset form
-        setEmail('');
-        setPassword('');
-
-        // Show success message
-        if (window.showSuccessToast) {
-          window.showSuccessToast('Login successful!');
+        const { status, user, access_token } = response.data;
+        
+        if (status === 'success') {
+          // Full login successful
+          login(user, access_token, 'success');
+          onClose();
+          
+          // Reset form
+          setEmail('');
+          setPassword('');
+          
+          // Show success message
+          if (window.showSuccessToast) {
+            window.showSuccessToast('Login successful!');
+          }
+        } else if (status === 'pending_approval') {
+          // User is verified but not approved - set as pending approval
+          login(user, null, 'pending_approval');
+          onClose();
+          
+          // Reset form
+          setEmail('');
+          setPassword('');
+          
+          // Navigate to pending approval page
+          window.location.href = '/pending-approval';
         }
+        // Other statuses will not reach here due to success: false
       } else {
-        // Login failed
-        setError(response.data?.message || 'Invalid email or password');
+        // Handle different error statuses
+        const { status, message } = response.data || {};
+        
+        if (status === 'invalid_credentials') {
+          // Silent handling for non-existent accounts - don't show error
+          // Just reset the form without any error message
+          setEmail('');
+          setPassword('');
+          // Optionally show a generic message without revealing account existence
+          if (window.showSuccessToast) {
+            window.showSuccessToast('Please check your credentials and try again.');
+          }
+        } else if (status === 'not_verified') {
+          setError('Please verify your email address before logging in.');
+        } else if (status === 'account_locked') {
+          setError('Account is temporarily locked. Please try again later.');
+        } else if (status === 'account_deactivated') {
+          setError('Account is deactivated. Please contact administrator.');
+        } else {
+          // Generic error for other cases
+          setError(message || 'Login failed. Please try again.');
+        }
       }
     } catch (err) {
       console.error('Login error:', err);
+      // For network errors, show generic message
       setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
@@ -142,23 +180,54 @@ export default function LoginModal({ isOpen, onClose }) {
             }}>
               Password
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              style={{
-                width: '100%',
-                padding: 'var(--space-3)',
-                border: '1px solid var(--gray-300)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-sm)',
-                backgroundColor: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
-                boxSizing: 'border-box'
-              }}
-              required
-            />
+            <div style={{
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                style={{
+                  width: '100%',
+                  padding: 'var(--space-3)',
+                  paddingRight: 'var(--space-10)',
+                  border: '1px solid var(--gray-300)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 'var(--text-sm)',
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  boxSizing: 'border-box'
+                }}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: 'var(--space-3)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 'var(--space-1)',
+                  color: 'var(--text-muted)',
+                  fontSize: 'var(--text-sm)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'color var(--transition-fast)'
+                }}
+                onMouseOver={(e) => e.target.style.color = 'var(--text-primary)'}
+                onMouseOut={(e) => e.target.style.color = 'var(--text-muted)'}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? '👁️‍🗨️' : '👁️'}
+              </button>
+            </div>
           </div>
 
           {success && (

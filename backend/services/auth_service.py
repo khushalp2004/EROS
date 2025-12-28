@@ -65,42 +65,48 @@ class AuthService:
             password (str): User password
             
         Returns:
-            tuple: (success: bool, message: str, user: User or None)
+            tuple: (status: str, message: str, user: User or None)
+                 status can be: 'success', 'pending_approval', 'not_verified', 
+                               'invalid_credentials', 'account_locked', 'account_deactivated'
         """
         try:
             # Find user by email
             user = User.find_by_email(email)
             
+            # For security, if user doesn't exist, return generic message
             if not user:
-                return False, "Invalid email or password", None
+                return 'invalid_credentials', "Invalid email or password", None
             
             # Check if account is locked
             if user.is_account_locked():
-                return False, "Account is temporarily locked due to too many failed login attempts", None
+                return 'account_locked', "Account is temporarily locked due to too many failed login attempts", None
             
             # Check if user is active
             if not user.is_active:
-                return False, "Account is deactivated. Please contact administrator.", None
+                return 'account_deactivated', "Account is deactivated. Please contact administrator.", None
             
             # Verify password
             if not user.check_password(password):
                 user.increment_failed_login()
-                return False, "Invalid email or password", None
+                return 'invalid_credentials', "Invalid email or password", None
             
-            # Check if user is verified and approved
+            # Check if user is verified
             if not user.is_verified:
-                return False, "Please verify your email address before logging in", None
+                return 'not_verified', "Please verify your email address before logging in", None
             
+            # Check if user is approved
             if not user.is_approved:
-                return False, "Your account is pending approval by administrator", None
+                # Record login attempt but don't generate tokens
+                user.record_login()
+                return 'pending_approval', "Your account is pending approval by administrator", user
             
-            # Record successful login
+            # Record successful login for approved users
             user.record_login()
             
-            return True, "Login successful", user
+            return 'success', "Login successful", user
             
         except Exception as e:
-            return False, f"Authentication failed: {str(e)}", None
+            return 'invalid_credentials', f"Authentication failed: {str(e)}", None
     
     @staticmethod
     def generate_tokens(user):

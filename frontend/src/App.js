@@ -7,12 +7,14 @@ import NotificationBadge from "./components/NotificationBadge";
 import NotificationPanel from "./components/NotificationPanel";
 import Navigation from "./components/Navigation";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AuthorityProtectedRoute from "./components/AuthorityProtectedRoute";
 import AddEmergency from "./components/AddEmergency";
 import EmailVerification from "./components/EmailVerification";
 import Dashboard from "./pages/Dashboard";
 import UnitsTracking from "./pages/UnitsTracking";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
+import PendingApproval from "./pages/PendingApproval";
 import "./styles/design-system.css";
 
 // Make toast functions globally available
@@ -96,8 +98,9 @@ function App() {
               <Routes>
                 <Route path="/" element={<AddEmergency />} />
                 <Route path="/verify-email/:token" element={<EmailVerification />} />
-                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/units-tracking" element={<ProtectedRoute><UnitsTracking /></ProtectedRoute>} />
+                <Route path="/pending-approval" element={<PendingApproval />} />
+                <Route path="/dashboard" element={<AuthorityProtectedRoute><Dashboard /></AuthorityProtectedRoute>} />
+                <Route path="/units-tracking" element={<AuthorityProtectedRoute><UnitsTracking /></AuthorityProtectedRoute>} />
                 <Route path="/admin" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
               </Routes>
             </main>
