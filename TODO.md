@@ -1,36 +1,27 @@
-# Delete Vehicle Feature Implementation TODO
+# TODO - Remove Admin Email Approve User Button
 
-## Task: Add delete vehicle button using unit_vehicle_number as form field
+## Information Gathered:
+- The admin email is sent via `send_admin_new_user_notification` method in `backend/services/email_service.py`
+- Previously included a direct approval button that links to `http://localhost:5000/api/admin/direct-approve/{approval_token}`
+- This direct approval functionality has been removed per user request
 
-## Steps to Complete:
+## Plan: ✅ COMPLETED
+1. ✅ Edit the `send_admin_new_user_notification` method in `backend/services/email_service.py`
+2. ✅ Remove the direct approval button and related HTML
+3. ✅ Update the text content to remove the direct approval URL
+4. ✅ Modify the message to emphasize admin panel login as the primary method for user approval
+5. ✅ Simplify the email content to remove the direct approval workflow
 
-### ✅ Step 1: Backend - Add Delete Endpoint
-- [x] Add DELETE endpoint `/units/vehicle-number/<vehicle_number>` in `backend/routes/unit_routes.py`
-- [x] Implement validation to ensure vehicle exists before deletion
-- [x] Add proper error handling for non-existent vehicles
-- [x] Include confirmation dialog data in response
+## Changes Made:
+- ✅ Removed the "✅ APPROVE USER NOW" button from HTML content
+- ✅ Removed "Option 1: Direct Approval" section from HTML
+- ✅ Removed "Direct Approval" URL from text content
+- ✅ Updated the workflow description to only mention admin panel approval
+- ✅ Kept the user details and admin panel login option
+- ✅ Simplified the action section to single "Action Required" with admin panel login only
+- ✅ Removed unused CSS styling for direct approval button
+- ✅ Updated security note to remove reference to approval link expiration
 
-### ✅ Step 2: Frontend API - Update API Layer
-- [x] Add `deleteUnitByVehicleNumber` function in `frontend/src/api.js`
-- [x] Keep existing `deleteUnit` function for backward compatibility
-
-### ✅ Step 3: Create DeleteUnit Component
-- [x] Create `frontend/src/components/DeleteUnit.js` modal component
-- [x] Single form field for unit_vehicle_number input
-- [x] Add confirmation step before deletion
-- [x] Include success/error notifications
-- [x] Use same styling and design patterns as AddUnit component
-
-### ✅ Step 4: Integration - Add Delete Button
-- [ ] Add delete button to relevant UI components (UnitsTracking.js, Authority.js, UnitList.js if exists)
-- [ ] Integrate DeleteUnit component
-- [ ] Add proper callback handling for unit deletion
-
-### ✅ Step 5: Testing and Validation
-- [ ] Test the delete functionality thoroughly
-- [ ] Verify error handling for edge cases
-- [ ] Test integration with existing unit management features
-- [ ] Ensure proper cleanup of related data
-
-## Current Status: Starting Implementation
-**Next Step**: Backend - Add Delete Endpoint
+## Followup Steps:
+- ✅ The modified email service has been updated successfully
+- ✅ Email formatting remains clean and professional after removal

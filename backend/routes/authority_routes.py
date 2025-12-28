@@ -1,7 +1,9 @@
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from models.unit import Unit
 from models.emergency import Emergency
 from models.location import RouteCalculation
+from models.user import User
 from models import db
 from datetime import datetime
 from config import OSRM_BASE_URL
@@ -11,9 +13,40 @@ import requests
 import math
 import json
 import polyline
+import functools
 
 # Max allowed route distance (50 km) for approval/dispatch
 MAX_DISTANCE_METERS = 50_000
+
+def authority_required():
+    """
+    Decorator to check if current user has authority or admin role
+    """
+    def decorator(f):
+        @jwt_required()
+        @functools.wraps(f)
+        def decorated_function(*args, **kwargs):
+            current_user_id = get_jwt_identity()
+            current_user = User.query.get(current_user_id)
+            
+            if not current_user:
+                return jsonify({
+                    'success': False,
+                    'message': 'User not found',
+                    'error': 'USER_NOT_FOUND'
+                }), 401
+            
+            # Check if user has authority or admin role
+            if current_user.role not in ['authority', 'admin']:
+                return jsonify({
+                    'success': False,
+                    'message': 'Authority access required',
+                    'error': 'AUTHORITY_REQUIRED'
+                }), 403
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 
 def haversine_m(lat1, lon1, lat2, lon2):
@@ -117,6 +150,7 @@ def osrm_route_distance_duration(src_lat, src_lon, dst_lat, dst_lon, timeout=3):
 # Add Unit (for 50% work)
 # -------------------------
 @authority_bp.route("/authority/add-unit", methods=["POST"])
+@authority_required()
 def add_unit():
     data = request.json
     if not all(k in data for k in ("service_type", "latitude", "longitude")):
@@ -138,6 +172,7 @@ def add_unit():
 # Dispatch emergency (nearest available unit)
 # -------------------------
 @authority_bp.route("/authority/dispatch/<int:emergency_id>", methods=["POST"])
+@authority_required()
 def dispatch_emergency(emergency_id):
     emergency = Emergency.query.get(emergency_id)
 
@@ -370,6 +405,7 @@ def dispatch_emergency(emergency_id):
 # Complete emergency (release unit)
 # -------------------------
 @authority_bp.route("/authority/complete/<int:emergency_id>", methods=["POST"])
+@authority_required()
 def complete_emergency(emergency_id):
     emergency = Emergency.query.get(emergency_id)
     if not emergency:
@@ -474,6 +510,7 @@ def complete_emergency(emergency_id):
 # Get all units (dashboard view)
 # -------------------------
 @authority_bp.route("/authority/units", methods=["GET"])
+@authority_required()
 def get_units():
     units = Unit.query.all()
     data = []
@@ -494,6 +531,7 @@ def get_units():
 # Get all emergencies (dashboard view)
 # -------------------------
 @authority_bp.route("/authority/emergencies", methods=["GET"])
+@authority_required()
 def get_emergencies():
     emergencies = Emergency.query.all()
     data = []

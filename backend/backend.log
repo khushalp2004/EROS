@@ -1,32 +1,28 @@
 🚀 Starting backend unit movement simulation...
-🔄 Simulation cycle running at 2025-12-25 11:03:45.392637
+🔄 Simulation cycle running at 2025-12-27 18:08:54.194271
 ✅ Backend simulation started successfully!
-📊 Found 2 assigned emergencies
-🔄 Started NEW simulation for Unit 10 to Emergency 101
-🚑 Unit 10: DEPARTED (0.0%) - Emergency 101
-🔄 Started NEW simulation for Unit 9 to Emergency 102
-🚑 Unit 9: DEPARTED (0.0%) - Emergency 102
+📊 Found 1 assigned emergencies
+🔄 RESET simulation for Unit 20 - NEW Emergency 177 (was None)
+🚑 Unit 20: DEPARTED (0.0%) - Emergency 177
  * Serving Flask app 'app'
  * Debug mode: on
 [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5001
- * Running on http://192.168.1.19:5001
+ * Running on http://127.0.0.1:5002
+ * Running on http://192.168.1.20:5002
 [33mPress CTRL+C to quit[0m
  * Restarting with stat
  * Debugger is active!
- * Debugger PIN: 132-954-447
+ * Debugger PIN: 140-370-541
 🚀 Starting backend unit movement simulation...
-🔄 Simulation cycle running at 2025-12-25 11:03:46.214441
+🔄 Simulation cycle running at 2025-12-27 18:08:58.277643
 ✅ Backend simulation started successfully!
-📊 Found 2 assigned emergencies
-🔄 Started NEW simulation for Unit 10 to Emergency 101
-🚑 Unit 10: DEPARTED (0.0%) - Emergency 101
-🔄 Started NEW simulation for Unit 9 to Emergency 102
-🚑 Unit 9: DEPARTED (0.0%) - Emergency 102
+📊 Found 1 assigned emergencies
+🔄 RESET simulation for Unit 20 - NEW Emergency 177 (was None)
+🚑 Unit 20: DEPARTED (0.0%) - Emergency 177
 Traceback (most recent call last):
-  File "/Users/khushalpatil/Desktop/EROS/backend/app.py", line 90, in <module>
-    socketio.run(app, debug=True, port=5001, host='0.0.0.0')
+  File "/Users/khushalpatil/Desktop/EROS/backend/app.py", line 117, in <module>
+    socketio.run(app, debug=True, port=port, host='0.0.0.0')
     ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/Users/khushalpatil/Desktop/EROS/.venv/lib/python3.14/site-packages/flask_socketio/__init__.py", line 650, in run
     app.run(host=host, port=port, threaded=True,
@@ -53,8 +49,6 @@ Traceback (most recent call last):
     termios.tcsetattr(sys.stdin, termios.TCSANOW, attributes)
     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 termios.error: (4, 'Interrupted system call')
-🔄 Simulation cycle running at 2025-12-25 11:05:28.436928
-🔄 Simulation cycle running at 2025-12-25 11:05:28.436499
-📊 Found 2 assigned emergencies
-🔄 Continuing Unit 10 simulation: 2.0%
-🚑 Unit 10: DEPARTED (2.0%) - Emergency 101
+🔄 Simulation cycle running at 2025-12-27 18:23:58.965881
+🔄 Simulation cycle running at 2025-12-27 18:23:58.965520
+📊 Found 1 assigned emergencies

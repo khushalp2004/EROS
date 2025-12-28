@@ -51,13 +51,16 @@
 
 from flask import Flask
 from flask_cors import CORS
-from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS
+from flask_jwt_extended import JWTManager
+from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SECRET_KEY
 from models import db
 from routes.unit_routes import unit_bp
 from routes.authority_routes import authority_bp
 from routes.emergency_routes import emergency_bp
 from routes.notification_routes import notification_bp
 from routes.location_routes import location_bp
+from routes.auth_routes import auth_bp
+from routes.admin_routes import admin_bp
 from events import socketio, init_websocket
 
 app = Flask(__name__)
@@ -71,12 +74,20 @@ CORS(
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRFToken"]
 )
 
-
-
+# App configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
 
+# JWT Configuration
+app.config["JWT_SECRET_KEY"] = SECRET_KEY
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 86400  # 24 hours
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = 2592000  # 30 days
+app.config["JWT_ALGORITHM"] = "HS256"
+app.config["JWT_IDENTITY_CLAIM"] = "sub"
+
+# Initialize extensions
 db.init_app(app)
+jwt = JWTManager(app)
 
 # Initialize WebSocket
 socketio = init_websocket(app)
@@ -87,6 +98,8 @@ app.register_blueprint(emergency_bp, url_prefix='/api')
 app.register_blueprint(authority_bp, url_prefix='/api')
 app.register_blueprint(notification_bp, url_prefix='/api')
 app.register_blueprint(location_bp, url_prefix='/api')
+app.register_blueprint(auth_bp, url_prefix='/api/auth')
+app.register_blueprint(admin_bp)
 
 @app.route("/")
 def home():
@@ -96,6 +109,10 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
     
+    # Get port from environment variable, default to 5001
+    import os
+    port = int(os.environ.get('PORT', 5001))
+    
     # Run with SocketIO
-    socketio.run(app, debug=True, port=5001, host='0.0.0.0')
+    socketio.run(app, debug=True, port=port, host='0.0.0.0')
 

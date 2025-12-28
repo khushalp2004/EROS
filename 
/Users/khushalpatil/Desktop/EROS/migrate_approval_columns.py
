@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""
+Migration script to add approval_token and approval_expires_at columns to users table
+"""
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
+
+from backend.app import app
+from backend.models import db, User
+import psycopg2
+from psycopg2 import sql
+
+def migrate_database():
+    """Add approval_token and approval_expires_at columns to users table"""
+    print("🔄 Running Database Migration")
+    print("Adding approval_token and approval_expires_at columns to users table")
+    print("=" * 60)
+    
+    try:
+        # Get database connection details from environment or config
+        # Using the same connection string as in config.py
+        db_uri = os.getenv('SQLALCHEMY_DATABASE_URI') or 'postgresql://postgres:khushalpatil29@db.pmiuqgtnztqnscvlldoj.supabase.co:5432/postgres'
+        
+        print(f"📋 Database URI: {db_uri[:50]}...")
+        
+        # Extract connection parameters
+        if 'postgresql://' in db_uri:
+            # Parse connection string: postgresql://user:password@host:port/dbname
+            uri_parts = db_uri.replace('postgresql://', '').split('@')
+            if len(uri_parts) == 2:
+                auth_part = uri_parts[0]
+                host_part = uri_parts[1]
+                
+                # Split auth part
+                if ':' in auth_part:
+                    user, password = auth_part.split(':', 1)
+                else:
+                    user = auth_part
+                    password = ''
+                
+                # Split host part
+                if ':' in host_part:
+                    host_port_db = host_part.split('/', 1)
+                    host_port = host_port_db[0]
+                    dbname = host_port_db[1] if len(host_port_db) > 1 else 'postgres'
+                    
+                    if ':' in host_port:
+                        host, port = host_port.split(':', 1)
+                        port = int(port)
+                    else:
+                        host = host_port
+                        port = 5432
+                else:
+                    raise ValueError("Invalid database URI format")
+            else:
+                raise ValueError("Invalid database URI format")
+        else:
+            raise ValueError("Only PostgreSQL URIs are supported")
+        
+        print(f"🔗 Connecting to PostgreSQL at {host}:{port}")
+        print(f"📊 Database: {dbname}")
+        print(f"👤 User: {user}")
+        
+        # Connect to database
+        conn = psycopg2.connect(
+            host=host,
+            port=port,
+            database=dbname,
+            user=user,
+            password=password
+        )
+        
+        cursor = conn.cursor()
+        
+        # Check if columns already exist
+        print("\n🔍 Checking if columns already exist...")
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'users' AND table_schema = 'public'
+        """)
+        
+        existing_columns = [row[0] for row in cursor.fetchall()]
+        print(f"📋 Existing columns: {existing_columns}")
+        
+        # Add columns if they don't exist
+        if 'approval_token' not in existing_columns:
+            print("\n➕ Adding approval_token column...")
+            cursor.execute("""
+                ALTER TABLE users 
+                ADD COLUMN approval_token VARCHAR(100) UNIQUE
+            """)
+            print("✅ approval_token column added")
+        else:
+            print("✅ approval_token column already exists")
+        
+        if 'approval_expires_at' not in existing_columns:
+            print("\n➕ Adding approval_expires_at column...")
+            cursor.execute("""
+                ALTER TABLE users 
+                ADD COLUMN approval_expires_at TIMESTAMP
+            """)
+            print("✅ approval_expires_at column added")
+        else:
+            print("✅ approval_expires_at column already exists")
+        
+        # Commit changes
+        conn.commit()
+        print("\n💾 Changes committed to database")
+        
+        # Verify the columns exist
+        print("\n🔍 Verifying new columns...")
+        cursor.execute("""
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns 
+            WHERE table_name = 'users' 
+            AND column_name IN ('approval_token', 'approval_expires_at')
+            AND table_schema = 'public'
+        """)
+        
+        columns = cursor.fetchall()
+        print("📋 New columns:")
+        for col_name, data_type, is_nullable in columns:
+            print(f"   ✅ {col_name}: {data_type} (nullable: {is_nullable})")
+        
+        cursor.close()
+        conn.close()
+        
+        print("\n" + "=" * 60)
+        print("🎉 Migration completed successfully!")
+        print("=" * 60)
+        
+        print("\n🚀 Next steps:")
+        print("1. The direct admin approval feature is now ready")
+        print("2. Test the feature by registering a new user")
+        print("3. Admin will receive email with approval button")
+        print("4. Clicking the button will approve user without login")
+        
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Migration failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+if __name__ == "__main__":
+    print("🗄️ Database Migration for Direct Admin Approval")
+    print("This script adds approval_token and approval_expires_at columns to users table")
+    
+    success = migrate_database()
+    
+    if success:
+        print("\n✅ Migration completed successfully!")
+        print("The direct admin approval feature is now ready to use.")
+    else:
+        print("\n❌ Migration failed!")
+        print("Please check the error messages above and try again.")
+        sys.exit(1)
+
