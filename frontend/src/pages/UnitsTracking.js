@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
+import "../styles/dashboard-styles.css";
 import RealtimeMapView from "../components/RealtimeMapView";
 import AddUnit from "../components/AddUnit";
 import DeleteUnit from "../components/DeleteUnit";
+import UnitList from "../components/UnitList";
 import api, { unitAPI } from "../api";
 import { useWebSocketManager, connectionManager } from "../hooks/useWebSocketManager";
 import backendRouteManager from "../utils/BackendRouteManager";
@@ -48,9 +50,29 @@ const UnitsTracking = () => {
       setLoading(true);
       const response = await api.get('/api/authority/units');
       setUnits(response.data);
+      
+      if (response.data.length === 0) {
+        if (window.showToast) {
+          window.showToast({
+            message: 'No units found. Add new units to start tracking.',
+            type: 'info',
+            duration: 4000
+          });
+        }
+      } else {
+        if (window.showSuccessToast) {
+          window.showSuccessToast(`Loaded ${response.data.length} units successfully`);
+        }
+      }
     } catch (err) {
       setError('Failed to fetch units');
       console.error('Error fetching units:', err);
+      
+      if (window.showErrorToast) {
+        window.showErrorToast('Failed to load units', {
+          description: 'Please check your connection and try again.'
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -74,8 +96,42 @@ const UnitsTracking = () => {
     if (isConnected) {
       console.log('✅ WebSocket connected - centralized real-time tracking enabled');
       refreshUnitLocations();
+      
+      if (window.showSuccessToast) {
+        window.showSuccessToast('WebSocket connected', {
+          description: 'Real-time unit tracking is now active'
+        });
+      }
+    } else {
+      if (window.showToast && !loading) {
+        window.showToast({
+          message: 'WebSocket disconnected',
+          description: 'Real-time tracking temporarily unavailable',
+          type: 'warning',
+          duration: 4000
+        });
+      }
     }
-  }, [isConnected, refreshUnitLocations]);
+  }, [isConnected, refreshUnitLocations, loading]);
+
+  useEffect(() => {
+    if (connectionError && window.showErrorToast) {
+      window.showErrorToast('Connection error', {
+        description: connectionError
+      });
+    }
+  }, [connectionError]);
+
+  useEffect(() => {
+    if (reconnectAttempts > 0 && reconnectAttempts <= 5 && window.showToast) {
+      window.showToast({
+        message: `Reconnecting... (${reconnectAttempts}/5)`,
+        description: 'Attempting to restore real-time connection',
+        type: 'info',
+        duration: 2000
+      });
+    }
+  }, [reconnectAttempts]);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -251,17 +307,42 @@ const UnitsTracking = () => {
     setSelectedUnit(unit);
     setTrackingMode('selected');
     console.log(`🎯 Selected Unit ${unit.unit_id} for focused tracking`);
+    
+    if (window.showToast) {
+      window.showToast({
+        message: `🎯 Tracking Unit ${unit.unit_id}`,
+        description: `${getServiceEmoji(unit.service_type)} ${unit.service_type} - Focused view enabled`,
+        type: 'info',
+        duration: 3000
+      });
+    }
   };
 
   const handleShowAllUnits = () => {
     setSelectedUnit(null);
     setTrackingMode('all');
+    
+    if (window.showToast) {
+      window.showToast({
+        message: '👁️ Showing all units',
+        description: 'Switched to comprehensive view of all tracked units',
+        type: 'info',
+        duration: 3000
+      });
+    }
   };
 
   const handleUnitAdded = (newUnit) => {
     console.log('✅ New unit added:', newUnit);
     setUnits(prev => [...prev, newUnit]);
     setShowAddUnit(false);
+    
+    if (window.showSuccessToast) {
+      window.showSuccessToast(`Unit ${newUnit.unit_vehicle_number} added successfully`, {
+        description: 'The new unit is now available for dispatch and tracking.'
+      });
+    }
+    
     // Optionally refresh to get updated data
     setTimeout(() => fetchUnits(), 1000);
   };
@@ -270,6 +351,13 @@ const UnitsTracking = () => {
     console.log('✅ Unit deleted:', deletedUnit);
     setUnits(prev => prev.filter(u => u.unit_id !== deletedUnit.unit_id));
     setShowDeleteUnit(false);
+    
+    if (window.showSuccessToast) {
+      window.showSuccessToast(`Unit ${deletedUnit.unit_vehicle_number} deleted successfully`, {
+        description: 'The unit has been removed from the tracking system.'
+      });
+    }
+    
     // Refresh data to get updated stats
     setTimeout(() => fetchUnits(), 1000);
   };
@@ -278,6 +366,24 @@ const UnitsTracking = () => {
     const newMode = trackingMode === 'simulated' ? 'all' : 'simulated';
     setTrackingMode(newMode);
     console.log(`${newMode === 'simulated' ? '🔴 Live' : '📊 All'} tracking mode enabled`);
+    
+    if (window.showToast) {
+      if (newMode === 'simulated') {
+        window.showToast({
+          message: '🔴 Live tracking enabled',
+          description: 'Real-time unit tracking and route animation active',
+          type: 'info',
+          duration: 3000
+        });
+      } else {
+        window.showToast({
+          message: '📊 All routes mode enabled',
+          description: 'Displaying all units and routes in static view',
+          type: 'info',
+          duration: 3000
+        });
+      }
+    }
   };
 
   const getStatusColor = (status) => {
@@ -293,10 +399,10 @@ const UnitsTracking = () => {
 
   const getServiceEmoji = (serviceType) => {
     switch (serviceType) {
-      case 'AMBULANCE': return '';
-      case 'FIRE_TRUCK': return '';
-      case 'POLICE': return '';
-      default: return '';
+      case 'AMBULANCE': return '🚑';
+      case 'FIRE_TRUCK': return '🚒';
+      case 'POLICE': return '🚓';
+      default: return '🚐';
     }
   };
 
@@ -334,14 +440,14 @@ const UnitsTracking = () => {
         return; // Skip if no route data
       }
 
-      // Get real-time progress from WebSocket data (backend-calculated)
+      // ✅ FIXED: Better progress integration from backend
       const realtimeLocation = unitLocations[unit_id];
       const realtimeProgress = realtimeLocation?.progress;
 
-      // Use real-time progress if available, otherwise fallback to route progress
-      const progress = (realtimeProgress !== undefined && realtimeProgress !== null)
-        ? realtimeProgress
-        : (route.progress || 0);
+      // ✅ FIXED: Prefer backend route progress over WebSocket data for route animation
+      // Backend calculates more accurate progress using GPS + time
+      const backendProgress = route.progress || 0;
+      const progress = backendProgress;
 
       // Create polyline with backend data and real-time progress
       polylines.push({
@@ -375,20 +481,149 @@ const UnitsTracking = () => {
     return filteredPolylines;
   }, [backendRoutes, trackingMode, selectedUnit, unitLocations]);
 
-  // ✅ SIMPLIFIED: Simple GPS update handling
+  // ✅ FIXED: Enhanced GPS update handling with progress integration
   const handleUnitLocationUpdate = (data) => {
     console.log('📍 GPS data received:', data);
     
-    // For now, just log the GPS data - backend handles route calculations
     if (data && data.unit_id) {
+      // ✅ FIXED: Update backend route manager with GPS progress
+      const backendRoute = backendRoutes.find(route => route.unit_id === data.unit_id);
+      
+      if (backendRoute?.route) {
+        // Calculate current position based on GPS and route
+        const currentPosition = calculatePositionFromGPS(
+          data.latitude, 
+          data.longitude, 
+          backendRoute.route.positions || []
+        );
+        
+        // Update route progress in backend manager
+        if (backendRouteManager.getRouteData(data.unit_id)) {
+          const routeData = backendRouteManager.getRouteData(data.unit_id);
+          if (routeData.route) {
+            // Add GPS-based progress calculation
+            const gpsProgress = calculateGPSProgress(
+              data.latitude, 
+              data.longitude, 
+              backendRoute.route.positions || []
+            );
+            
+            // Use GPS progress if available, otherwise keep backend progress
+            if (gpsProgress !== null) {
+              routeData.route.progress = gpsProgress;
+              routeData.route.current_position = currentPosition;
+              routeData.route.lastGPSUpdate = Date.now();
+              
+              console.log(`📍 Updated GPS progress for Unit ${data.unit_id}:`, {
+                progress: gpsProgress,
+                position: currentPosition,
+                source: 'GPS'
+              });
+            }
+          }
+        }
+      }
+      
       console.log(`📍 Unit ${data.unit_id} GPS update:`, {
         latitude: data.latitude,
         longitude: data.longitude,
         accuracy: data.accuracy,
-        status: data.status
+        status: data.status,
+        hasRoute: !!backendRoute
       });
     }
   };
+
+  // ✅ FIXED: Calculate position along route from GPS coordinates
+  const calculatePositionFromGPS = (lat, lng, routePositions) => {
+    if (!routePositions || routePositions.length === 0) {
+      return [lat, lng];
+    }
+    
+    let closestPoint = null;
+    let minDistance = Infinity;
+    
+    // Find closest point on route
+    for (let i = 0; i < routePositions.length - 1; i++) {
+      const segmentStart = routePositions[i];
+      const segmentEnd = routePositions[i + 1];
+      
+      const closest = findClosestPointOnSegment([lat, lng], segmentStart, segmentEnd);
+      if (closest.distance < minDistance) {
+        minDistance = closest.distance;
+        closestPoint = closest.position;
+      }
+    }
+    
+    return closestPoint || [lat, lng];
+  };
+
+  // ✅ FIXED: Calculate progress based on GPS position along route
+  const calculateGPSProgress = (lat, lng, routePositions) => {
+    if (!routePositions || routePositions.length < 2) {
+      return null;
+    }
+    
+    let totalDistance = 0;
+    let distanceToPoint = 0;
+    
+    // Calculate total route distance and distance to current position
+    for (let i = 0; i < routePositions.length - 1; i++) {
+      const segmentStart = routePositions[i];
+      const segmentEnd = routePositions[i + 1];
+      
+      const segmentDistance = calculateDistance(
+        segmentStart[0], segmentStart[1],
+        segmentEnd[0], segmentEnd[1]
+      );
+      totalDistance += segmentDistance;
+      
+      // Check if current position is along this segment
+      const closest = findClosestPointOnSegment([lat, lng], segmentStart, segmentEnd);
+      if (closest.projection >= 0 && closest.projection <= 1) {
+        distanceToPoint += closest.projection * segmentDistance;
+        break;
+      } else {
+        distanceToPoint += segmentDistance;
+      }
+    }
+    
+    // Return progress as percentage
+    return totalDistance > 0 ? Math.min(distanceToPoint / totalDistance, 1.0) : 0;
+  };
+
+  // ✅ FIXED: Find closest point on line segment
+  const findClosestPointOnSegment = (point, segmentStart, segmentEnd) => {
+    const [px, py] = point;
+    const [x1, y1] = segmentStart;
+    const [x2, y2] = segmentEnd;
+    
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSquared = dx * dx + dy * dy;
+    
+    if (lengthSquared === 0) {
+      return {
+        position: segmentStart,
+        distance: calculateDistance(px, py, x1, y1),
+        projection: 0
+      };
+    }
+    
+    let t = ((px - x1) * dx + (py - y1) * dy) / lengthSquared;
+    t = Math.max(0, Math.min(1, t));
+    
+    const closestX = x1 + t * dx;
+    const closestY = y1 + t * dy;
+    
+    return {
+      position: [closestX, closestY],
+      distance: calculateDistance(px, py, closestX, closestY),
+      projection: t
+    };
+  };
+
+
 
   const getTrackingModeIcon = () => {
     switch (trackingMode) {
@@ -457,7 +692,17 @@ const UnitsTracking = () => {
             {error}
           </div>
           <button 
-            onClick={fetchUnits}
+            onClick={() => {
+              if (window.showToast) {
+                window.showToast({
+                  message: 'Retrying connection...',
+                  description: 'Attempting to reconnect and reload units',
+                  type: 'info',
+                  duration: 2000
+                });
+              }
+              fetchUnits();
+            }}
             className="btn btn-primary"
           >
             Retry
@@ -468,544 +713,286 @@ const UnitsTracking = () => {
   }
 
   return (
-    <div className="tracking-layout">
-      <div className="tracking-header">
-        <div className="container">
-          <h1 className="page-title">
+    <div className="dashboard-container">
+      <div className="dashboard-header">
+        <div className="dashboard-header-content">
+          <h1 className="dashboard-title">
             📍 Real-Time Unit Tracking
           </h1>
-          <p className="page-subtitle">
+          <p className="dashboard-subtitle">
             Monitor emergency response units with live tracking and route optimization
           </p>
         </div>
       </div>
 
-      <div className="card" style={{ margin: 'var(--space-6)', marginBottom: 'var(--space-4)' }}>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'flex-start',
-          gap: 'var(--space-6)',
-          flexWrap: 'wrap'
-        }}>
-          <div style={{ flex: 1, minWidth: '300px' }}>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-              gap: 'var(--space-4)',
-              marginBottom: 'var(--space-4)'
-            }}>
-              <div className="route-stat-item" style={{ textAlign: 'center' }}>
-                <div className="stat-icon">📍</div>
-                <div className="stat-value">{units.length}</div>
-                <div className="stat-label">Total Units</div>
-              </div>
-              <div className="route-stat-item" style={{ textAlign: 'center' }}>
-                <div className="stat-icon">🔴</div>
-                <div className="stat-value">{simulationStats.activeSimulations}</div>
-                <div className="stat-label">Live Simulations</div>
-              </div>
-              <div className="route-stat-item" style={{ textAlign: 'center' }}>
-                <div className="stat-icon">🚨</div>
-                <div className="stat-value">{simulationStats.totalRoutes}</div>
-                <div className="stat-label">Assigned Routes</div>
-              </div>
-              <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
-                <div className="status-dot"></div>
-                <div>
-                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)' }}>
-                    {isConnected ? 'Connected' : 'Disconnected'}
-                  </div>
-                  <div style={{ fontSize: 'var(--text-xs)' }}>WebSocket Status</div>
-                </div>
-              </div>
-              <div className="route-stat-item" style={{ textAlign: 'center' }}>
-                <div className="stat-icon">🎯</div>
-                <div className="stat-value">Backend</div>
-                <div className="stat-label">Route System</div>
-              </div>
+      <div className="dashboard-main">
+        <div className="dashboard-stats-grid-balanced">
+          <div className="dashboard-stat-card-balanced available">
+            <div className="dashboard-stat-icon">📍</div>
+            <div className="dashboard-stat-value">
+              {units.length}
             </div>
-            
-            {connectionError && (
-              <div style={{
-                padding: 'var(--space-3)',
-                backgroundColor: 'var(--accent-red)',
-                color: 'var(--text-inverse)',
-                borderRadius: 'var(--radius-lg)',
-                marginTop: 'var(--space-3)',
-                fontSize: 'var(--text-sm)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}>
-                <span>Connection Error: {connectionError}</span>
-                <button 
-                  onClick={reconnect}
-                  className="btn btn-sm"
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    color: 'var(--text-inverse)',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    fontSize: 'var(--text-xs)'
-                  }}
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-            
-            {reconnectAttempts > 0 && (
-              <div style={{ 
-                marginTop: 'var(--space-2)',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--accent-red)',
-                textAlign: 'center'
-              }}>
-                Reconnecting... {reconnectAttempts}/5
-              </div>
-            )}
+            <div className="dashboard-stat-label">Total Units</div>
           </div>
 
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column',
-            gap: 'var(--space-3)',
-            minWidth: '200px'
-          }}>
-            <button
-              onClick={handleToggleSimulation}
-              className={`btn btn-lg ${trackingMode === 'simulated' ? 'btn-danger' : 'btn-primary'}`}
-              style={{
-                width: '100%',
-                justifyContent: 'center',
-                fontWeight: 'var(--font-semibold)'
-              }}
-            >
-              {trackingMode === 'simulated' ? '🔴 Live Tracking' : '📊 All Routes'}
-            </button>
-            
-            {selectedUnit && (
-              <button
-                onClick={handleShowAllUnits}
-                className="btn btn-outline"
-                style={{
-                  width: '100%',
-                  justifyContent: 'center',
-                  borderColor: 'var(--gray-600)',
-                  color: 'var(--gray-600)'
-                }}
-              >
-                Show All Units
-              </button>
-            )}
-            
-            <button
-              onClick={() => setShowAddUnit(true)}
-              className="btn btn-primary"
-              style={{
-                width: '100%',
-                justifyContent: 'center',
-                backgroundColor: 'var(--primary-blue)'
-              }}
-            >
-              🚛 Add New Unit
-            </button>
-            
-            <button
-              onClick={() => setShowDeleteUnit(true)}
-              className="btn btn-danger"
-              style={{
-                width: '100%',
-                justifyContent: 'center',
-                backgroundColor: 'var(--accent-red)'
-              }}
-            >
-              🗑️ Delete Vehicle
-            </button>
-            
-            <button
-              onClick={async () => {
-                await fetchUnits();
-                await fetchEmergencies();
-                refreshUnitLocations();
-              }}
-              className="btn btn-success"
-              style={{
-                width: '100%',
-                justifyContent: 'center'
-              }}
-            >
-              🔄 Refresh Data
-            </button>
+          <div className="dashboard-stat-card-balanced active">
+            <div className="dashboard-stat-icon">🔴</div>
+            <div className="dashboard-stat-value">
+              {simulationStats.activeSimulations}
+            </div>
+            <div className="dashboard-stat-label">Live Simulations</div>
+          </div>
+
+          <div className="dashboard-stat-card-balanced pending">
+            <div className="dashboard-stat-icon">🚨</div>
+            <div className="dashboard-stat-value">
+              {simulationStats.totalRoutes}
+            </div>
+            <div className="dashboard-stat-label">Assigned Routes</div>
+          </div>
+
+          <div className={`dashboard-stat-card-balanced status ${isConnected ? 'connected' : 'disconnected'}`}>
+            <div className="dashboard-stat-icon">{isConnected ? '🟢' : '🔴'}</div>
+            <div className="dashboard-stat-value">
+              {isConnected ? 'ONLINE' : 'OFFLINE'}
+            </div>
+            <div className="dashboard-stat-label">System Status</div>
           </div>
         </div>
-        
-        {simulationStats.estimatedArrivals.length > 0 && (
-          <div style={{
-            marginTop: 'var(--space-6)',
-            padding: 'var(--space-4)',
-            backgroundColor: 'var(--gray-50)',
-            borderRadius: 'var(--radius-xl)',
-            border: '1px solid var(--gray-200)'
-          }}>
-            <div style={{ 
-              fontSize: 'var(--text-base)', 
-              fontWeight: 'var(--font-semibold)', 
-              marginBottom: 'var(--space-3)',
-              color: 'var(--text-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}>
-              🚨 Active Routes & ETA
-            </div>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-              gap: 'var(--space-3)'
-            }}>
-              {simulationStats.estimatedArrivals.slice(0, 3).map((route, index) => (
-                <div key={index} style={{ 
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--bg-primary)',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '1px solid var(--gray-200)',
-                  boxShadow: 'var(--shadow-sm)'
-                }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 'var(--space-2)',
-                    fontWeight: 'var(--font-medium)',
-                    marginBottom: 'var(--space-2)'
-                  }}>
-                    <span style={{ fontSize: 'var(--text-lg)' }}>
-                      {getServiceEmoji(units.find(u => u.unit_id === route.unitId)?.service_type)}
-                    </span>
-                    <strong>Unit {route.unitId}</strong>
-                    <span style={{ color: 'var(--text-muted)' }}>→</span>
-                    <strong>Emergency #{route.emergencyId}</strong>
-                  </div>
-                  <div style={{ 
-                    fontSize: 'var(--text-sm)',
-                    color: 'var(--text-secondary)',
+
+        {connectionError && (
+          <div className="connection-error-enhanced">
+            <span>Connection Error: {connectionError}</span>
+            <button
+              onClick={() => {
+                if (window.showToast) {
+                  window.showToast({
+                    message: 'Reconnecting to WebSocket...',
+                    description: 'Attempting to restore real-time connection',
+                    type: 'info',
+                    duration: 2000
+                  });
+                }
+                reconnect();
+              }}
+              className="btn-retry-enhanced"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {reconnectAttempts > 0 && (
+          <div className="reconnect-attempts-enhanced">
+            Reconnecting... {reconnectAttempts}/5
+          </div>
+        )}
+
+        <div className="dashboard-content-grid">
+          {/* Map Section */}
+          <div className="dashboard-map-section">
+            <div className="dashboard-map-header">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 className="dashboard-map-title">
+                  🗺️ Unit Tracking Map
+                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <label style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 'var(--space-4)'
+                    gap: 'var(--space-1)',
+                    fontSize: 'var(--text-sm)',
+                    cursor: 'pointer'
                   }}>
-                    <span>
-                      📍 {route.distance}km
-                    </span>
-                    <span>
-                      ⏱️ ETA: {route.etaMinutes}min
-                    </span>
-                  </div>
+                    <input
+                      type="checkbox"
+                      checked={trackingMode === 'simulated'}
+                      onChange={handleToggleSimulation}
+                      style={{ transform: 'scale(1.1)' }}
+                    />
+                    <span>📊 Show Routes</span>
+                  </label>
                 </div>
-              ))}
+              </div>
+              {selectedUnit && (
+                <div style={{
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--primary-blue)',
+                  fontWeight: 'var(--font-medium)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  marginTop: 'var(--space-1)'
+                }}>
+                  <span>🎯 Showing:</span>
+                  <span>Unit {selectedUnit.unit_id}</span>
+                  {selectedUnit.service_type && (
+                    <span style={{ color: 'var(--secondary-green)' }}>
+                      ({selectedUnit.service_type})
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
+            <div className="dashboard-map-container">
+              <RealtimeMapView
+                key={`map-${trackingMode}-${selectedUnit?.unit_id || 'all'}`}
+                markers={mapMarkers}
+                polylines={realtimeRoutePolylines}
+                showRealtimeData={true}
+                animateRoutes={trackingMode !== 'all'}
+                center={selectedUnit ? [selectedUnit.latitude, selectedUnit.longitude] : undefined}
+              />
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="dashboard-actions-section">
+            <h3 className="dashboard-actions-title">
+              ⚡ Quick Actions
+            </h3>
+
+            <div className="dashboard-actions-grid">
+              <button
+                onClick={() => setShowAddUnit(true)}
+                className="dashboard-btn dashboard-btn-secondary "
+              >
+                🚛 Add New Unit
+              </button>
+
+              <button
+                onClick={() => setShowDeleteUnit(true)}
+                className="dashboard-btn dashboard-btn-primary"
+              >
+                🗑️ Delete Vehicle
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (window.showToast) {
+                    window.showToast({
+                      message: 'Refreshing data...',
+                      description: 'Updating units, emergencies and real-time locations',
+                      type: 'info',
+                      duration: 2000
+                    });
+                  }
+
+                  try {
+                    await fetchUnits();
+                    await fetchEmergencies();
+                    refreshUnitLocations();
+
+                    if (window.showSuccessToast) {
+                      window.showSuccessToast('Data refreshed successfully', {
+                        description: 'All units and emergencies have been updated'
+                      });
+                    }
+                  } catch (err) {
+                    if (window.showErrorToast) {
+                      window.showErrorToast('Failed to refresh data', {
+                        description: 'Please check your connection and try again'
+                      });
+                    }
+                  }
+                }}
+                className="dashboard-btn "
+              >
+                🔄 Refresh Data
+              </button>
+            </div>
+
+            {/* Unit Status Summary */}
+            <div className="dashboard-actions-summary">
+              <h4 className="dashboard-summary-title">
+                📊 Unit Status
+              </h4>
+              <div className="dashboard-summary-grid">
+                <div className="dashboard-summary-row">
+                  <span className="dashboard-summary-label">Available:</span>
+                  <span className="dashboard-summary-value available">
+                    {units.filter(u => u.status === 'AVAILABLE').length}
+                  </span>
+                </div>
+                <div className="dashboard-summary-row">
+                  <span className="dashboard-summary-label">Busy:</span>
+                  <span className="dashboard-summary-value busy">
+                    {units.filter(u => ['DISPATCHED', 'ENROUTE'].includes(u.status)).length}
+                  </span>
+                </div>
+                <div className="dashboard-summary-row">
+                  <span className="dashboard-summary-label">Total:</span>
+                  <span className="dashboard-summary-value">
+                    {units.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Units List Section - Full Width */}
+        <div className="units-list-section">
+          <div className="units-list-header">
+            <h3 className="units-list-title">
+              {getTrackingModeIcon()} Units Management
+            </h3>
+            <span className="units-list-count">
+              {units.length} total units
+            </span>
+            <div className="units-table-info">
+              {selectedUnit ? (
+                <div className="units-selected-unit-info">
+                  <strong>{getServiceEmoji(selectedUnit.service_type)} Unit {selectedUnit.unit_id}</strong>
+                  <span className="units-focused-view-badge">
+                    🎯 Focused View
+                  </span>
+                </div>
+              ) : (
+                <div className="units-all-units-info">
+                  <strong>{units.length} units</strong>
+                  <span className={`units-simulation-badge ${simulationStats.activeSimulations > 0 ? 'active' : 'inactive'}`}>
+                    {simulationStats.activeSimulations > 0 ? '🔴 Live Simulation' : '🟢 Static Display'}
+                  </span>
+                </div>
+              )}
+              <div className="units-active-routes-info">
+                <span className="units-active-routes-badge">
+                  📊 {realtimeRoutePolylines.length} Active Routes
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <UnitList
+            units={units}
+            onSelect={handleUnitClick}
+            selectedId={selectedUnit?.unit_id}
+            onCenterMap={(lat, lng) => {
+              // Update map center when unit is selected
+              setSelectedUnit(prev => prev ? { ...prev, latitude: lat, longitude: lng } : null);
+            }}
+          />
+        </div>
+
+        {/* Loading Indicator */}
+        {loading && (
+          <div className="dashboard-loading">
+            <div className="dashboard-spinner"></div>
+            <span>Loading...</span>
           </div>
         )}
       </div>
 
-      <div className="card" style={{ 
-        margin: 'var(--space-6)',
-        marginBottom: 'var(--space-4)',
-        overflow: 'hidden',
-        flex: '1',
-        minHeight: '60%'
-      }}>
-        <div className="map-container" style={{ 
-          height: '500px',
-          position: 'relative'
-        }}>
-          <RealtimeMapView
-            key={`map-${trackingMode}-${selectedUnit?.unit_id || 'all'}`}
-            markers={mapMarkers}
-            polylines={realtimeRoutePolylines}
-            showRealtimeData={true}
-            animateRoutes={trackingMode !== 'all'}
-            center={selectedUnit ? [selectedUnit.latitude, selectedUnit.longitude] : undefined}
-          />
-          
-          <div className="map-legend">
-            <div style={{ 
-              fontWeight: 'var(--font-semibold)', 
-              marginBottom: 'var(--space-3)',
-              fontSize: 'var(--text-sm)',
-              color: 'var(--text-primary)',
-              borderBottom: '1px solid var(--gray-200)',
-              paddingBottom: 'var(--space-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}>
-              {getTrackingModeIcon()} {selectedUnit ? `Tracking Unit ${selectedUnit.unit_id}` : `${trackingMode.charAt(0).toUpperCase() + trackingMode.slice(1)} Mode`}
-            </div>
-            <div style={{ 
-              fontSize: 'var(--text-xs)', 
-              color: 'var(--text-secondary)', 
-              marginBottom: 'var(--space-2)',
-              lineHeight: 1.5
-            }}>
-               Ambulance |  Fire Truck |  Police |  Other Units
-            </div>
-            
-            {Object.keys(routeFetchStatus).length > 0 && (
-              <div style={{
-                marginTop: 'var(--space-3)',
-                padding: 'var(--space-2)',
-                backgroundColor: 'var(--gray-50)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--gray-200)'
-              }}>
-                <div style={{ 
-                  fontSize: 'var(--text-xs)', 
-                  fontWeight: 'var(--font-semibold)',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--space-1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-1)'
-                }}>
-                  🗄️ Database Route Status
-                </div>
-                {Object.entries(routeFetchStatus).map(([emergencyId, status]) => (
-                  <div key={emergencyId} style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-2)',
-                    fontSize: 'var(--text-xs)',
-                    marginBottom: 'var(--space-1)',
-                    padding: 'var(--space-1)',
-                    backgroundColor: 'var(--bg-primary)',
-                    borderRadius: 'var(--radius-sm)'
-                  }}>
-                    <span style={{
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      backgroundColor: 
-                        status.status === 'fetching' ? '#ffc107' :
-                        status.status === 'success' ? '#28a745' :
-                        status.status === 'error' ? '#dc3545' :
-                        '#6c757d',
-                      flexShrink: 0
-                    }}></span>
-                    <span style={{ 
-                      fontWeight: 'var(--font-medium)',
-                      color: 'var(--text-primary)'
-                    }}>
-                      Emergency #{emergencyId}
-                    </span>
-                    <span style={{ 
-                      color: 'var(--text-secondary)',
-                      flex: 1
-                    }}>
-                      {status.message}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {trackingMode !== 'all' && (
-              <div style={{ 
-                fontSize: 'var(--text-xs)', 
-                color: 'var(--primary-blue)', 
-                marginTop: 'var(--space-2)',
-                marginBottom: 'var(--space-1)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-1)'
-              }}>
-                🔴 Real-time simulation active
-              </div>
-            )}
-            {realtimeRoutePolylines.length > 0 && (
-              <div style={{ 
-                fontSize: 'var(--text-xs)', 
-                color: 'var(--secondary-green)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-1)'
-              }}>
-                📊 {realtimeRoutePolylines.length} route(s) visible
-              </div>
-            )}
-          </div>
-          
-          <div style={{
-            position: 'absolute',
-            bottom: 'var(--space-4)',
-            left: 'var(--space-4)',
-            backgroundColor: 'var(--bg-overlay)',
-            backdropFilter: 'blur(8px)',
-            padding: 'var(--space-3)',
-            borderRadius: 'var(--radius-lg)',
-            boxShadow: 'var(--shadow-lg)',
-            border: '1px solid var(--gray-200)',
-            zIndex: 1000
-          }}>
-            <div style={{ 
-              fontSize: 'var(--text-xs)', 
-              color: 'var(--text-secondary)', 
-              marginBottom: 'var(--space-1)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-1)'
-            }}>
-              📍 Tracking Mode: <strong>{trackingMode}</strong>
-            </div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-              {trackingMode === 'simulated' ? '🔴 Live tracking enabled' : 
-               trackingMode === 'selected' ? '🎯 Focused tracking' : 
-               '📊 All units displayed'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card" style={{
-        margin: 'var(--space-6)',
-        marginTop: 'var(--space-4)',
-        border: '1px solid var(--gray-200)',
-        borderRadius: 'var(--radius-xl)',
-        overflow: 'hidden',
-        maxHeight: '40%'
-      }}>
-        <div style={{ 
-          padding: 'var(--space-6)',
-          backgroundColor: 'var(--gray-50)',
-          borderBottom: '1px solid var(--gray-200)'
-        }}>
-          <h2 style={{ 
-            margin: 0, 
-            fontSize: 'var(--text-lg)',
-            color: 'var(--text-primary)',
-            fontWeight: 'var(--font-semibold)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}>
-            {getTrackingModeIcon()} Units Management
-          </h2>
-          <div style={{ 
-            display: 'flex', 
-            gap: 'var(--space-6)',
-            marginTop: 'var(--space-3)', 
-            fontSize: 'var(--text-sm)', 
-            color: 'var(--text-secondary)',
-            flexWrap: 'wrap'
-          }}>
-            {selectedUnit ? (
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)'
-              }}>
-                <strong>{getServiceEmoji(selectedUnit.service_type)} Unit {selectedUnit.unit_id}</strong>
-                <span className="badge" style={{ 
-                  backgroundColor: 'var(--primary-blue)',
-                  color: 'var(--text-inverse)',
-                  fontSize: 'var(--text-xs)'
-                }}>
-                  🎯 Focused View
-                </span>
-              </div>
-            ) : (
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)'
-              }}>
-                <strong>{units.length} units</strong>
-                <span className={`badge ${simulationStats.activeSimulations > 0 ? 'badge-danger' : 'badge-success'}`}>
-                  {simulationStats.activeSimulations > 0 ? '🔴 Live Simulation' : '🟢 Static Display'}
-                </span>
-              </div>
-            )}
-            <div style={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}>
-              <span className="badge badge-info">
-                📊 {realtimeRoutePolylines.length} Active Routes
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="table-container">
-          <table className="enhanced-table">
-            <thead>
-              <tr>
-                <th>Select</th>
-                <th>Unit ID</th>
-                <th>Vehicle Number</th>
-                <th>Service Type</th>
-                <th>Status</th>
-                <th>Location</th>
-                <th>Last Update</th>
-              </tr>
-            </thead>
-            <tbody>
-              {units.map((unit, index) => (
-                <tr
-                  key={unit.unit_id}
-                  className={`interactive-element ${selectedUnit?.unit_id === unit.unit_id ? 'selected' : ''}`}
-                  onClick={() => handleUnitClick(unit)}
-                >
-                  <td>
-                    <div className="unit-selector">
-                      {selectedUnit?.unit_id === unit.unit_id ? '✓' : ''}
-                    </div>
-                  </td>
-                  <td style={{ fontWeight: 'var(--font-semibold)' }}>
-                    {getServiceEmoji(unit.service_type)} Unit {unit.unit_id}
-                  </td>
-                  <td>
-                    <span className="badge" style={{
-                      backgroundColor: 'var(--gray-600)',
-                      color: 'var(--text-inverse)',
-                      fontSize: 'var(--text-xs)',
-                      fontFamily: 'var(--font-mono)'
-                    }}>
-                      {unit.unit_vehicle_number || 'N/A'}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`status-badge ${unit.status.toLowerCase()}`}>
-                      {unit.service_type}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`status-badge ${unit.status.toLowerCase()}`}>
-                      {unit.status}
-                    </span>
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}>
-                    {unit.latitude.toFixed(4)}, {unit.longitude.toFixed(4)}
-                  </td>
-                  <td style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                    {formatTime(unit.last_updated)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       {/* Add Unit Modal */}
-      <AddUnit 
+      <AddUnit
         isOpen={showAddUnit}
         onClose={() => setShowAddUnit(false)}
         onUnitAdded={handleUnitAdded}
       />
 
       {/* Delete Unit Modal */}
-      <DeleteUnit 
+      <DeleteUnit
         isOpen={showDeleteUnit}
         onClose={() => setShowDeleteUnit(false)}
         onUnitDeleted={handleUnitDeleted}

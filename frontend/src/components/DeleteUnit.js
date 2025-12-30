@@ -23,12 +23,24 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
 
   const validateForm = () => {
     if (!formData.unit_vehicle_number.trim()) {
-      setError("Vehicle number is required");
+      const errorMsg = "Vehicle number is required";
+      setError(errorMsg);
+      if (window.showErrorToast) {
+        window.showErrorToast("Validation Error", {
+          description: errorMsg
+        });
+      }
       return false;
     }
     
     if (formData.unit_vehicle_number.length < 3 || formData.unit_vehicle_number.length > 15) {
-      setError("Vehicle number must be between 3 and 15 characters");
+      const errorMsg = "Vehicle number must be between 3 and 15 characters";
+      setError(errorMsg);
+      if (window.showErrorToast) {
+        window.showErrorToast("Invalid Vehicle Number", {
+          description: errorMsg
+        });
+      }
       return false;
     }
     
@@ -41,6 +53,15 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
     if (!validateForm()) return;
     
     // Show confirmation dialog
+    if (window.showToast) {
+      window.showToast({
+        message: '⚠️ Deletion confirmation required',
+        description: `Please confirm the deletion of ${formData.unit_vehicle_number}`,
+        type: 'warning',
+        duration: 3000
+      });
+    }
+    
     setShowConfirmation(true);
   };
 
@@ -49,11 +70,27 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
     setLoading(true);
     setError(null);
     
+    if (window.showToast) {
+      window.showToast({
+        message: '🗑️ Deleting vehicle...',
+        description: `Removing ${formData.unit_vehicle_number} from the system`,
+        type: 'info',
+        duration: 2000
+      });
+    }
+    
     try {
       const response = await unitAPI.deleteUnitByVehicleNumber(formData.unit_vehicle_number);
       
       if (response.data) {
         setSuccess(true);
+        
+        if (window.showSuccessToast) {
+          window.showSuccessToast('Vehicle deleted successfully', {
+            description: `${formData.unit_vehicle_number} has been permanently removed from the system`
+          });
+        }
+        
         setTimeout(() => {
           onUnitDeleted && onUnitDeleted(response.data.deleted_unit);
           handleClose();
@@ -63,6 +100,12 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
       console.error("Error deleting unit:", err);
       const errorMessage = err.response?.data?.error || "Failed to delete unit";
       setError(errorMessage);
+      
+      if (window.showErrorToast) {
+        window.showErrorToast('Failed to delete vehicle', {
+          description: errorMessage
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -70,6 +113,15 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
 
   const handleCancelDelete = () => {
     setShowConfirmation(false);
+    
+    if (window.showToast) {
+      window.showToast({
+        message: 'Delete cancelled',
+        description: 'Vehicle deletion was cancelled, no changes made',
+        type: 'info',
+        duration: 2000
+      });
+    }
   };
 
   const handleClose = () => {
@@ -80,6 +132,17 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
     setSuccess(false);
     setShowConfirmation(false);
     onClose && onClose();
+  };
+
+  const handleOpen = () => {
+    if (window.showToast) {
+      window.showToast({
+        message: '🗑️ Delete Emergency Unit',
+        description: 'Enter the vehicle number to permanently remove from system',
+        type: 'info',
+        duration: 3000
+      });
+    }
   };
 
   if (!isOpen) return null;
@@ -95,7 +158,7 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1100
     }}>
       <div className="modal-content" style={{
         backgroundColor: 'var(--bg-primary)',

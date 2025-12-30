@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { authAPI } from '../api';
+import ForgotPasswordModal from './ForgotPasswordModal';
 
 export default function LoginModal({ isOpen, onClose }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const { login } = useAuth();
 
   // Check for verification success message
@@ -21,6 +25,13 @@ export default function LoginModal({ isOpen, onClose }) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [location]);
+
+  // Reset redirecting state when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) {
+      setRedirecting(false);
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -39,7 +50,6 @@ export default function LoginModal({ isOpen, onClose }) {
         if (status === 'success') {
           // Full login successful
           login(user, access_token, 'success');
-          onClose();
           
           // Reset form
           setEmail('');
@@ -49,6 +59,25 @@ export default function LoginModal({ isOpen, onClose }) {
           if (window.showSuccessToast) {
             window.showSuccessToast('Login successful!');
           }
+          
+          // Close modal and handle redirection
+          onClose();
+          
+          // Add a small delay before redirection to show success message
+          setTimeout(() => {
+            setRedirecting(true);
+            
+            // Role-based redirection
+            if (user.role === 'admin') {
+              navigate('/admin');
+            } else if (user.role === 'authority') {
+              navigate('/dashboard');
+            }
+            // For other roles (like reporter), no redirection needed
+            
+            setRedirecting(false);
+          }, 1000); // 1 second delay to show success message
+          
         } else if (status === 'pending_approval') {
           // User is verified but not approved - set as pending approval
           login(user, null, 'pending_approval');
@@ -67,14 +96,9 @@ export default function LoginModal({ isOpen, onClose }) {
         const { status, message } = response.data || {};
         
         if (status === 'invalid_credentials') {
-          // Silent handling for non-existent accounts - don't show error
-          // Just reset the form without any error message
-          setEmail('');
-          setPassword('');
-          // Optionally show a generic message without revealing account existence
-          if (window.showSuccessToast) {
-            window.showSuccessToast('Please check your credentials and try again.');
-          }
+          // Show error message for invalid credentials and keep modal open
+          setError('Invalid email or password');
+          // Don't reset the form or close the modal
         } else if (status === 'not_verified') {
           setError('Please verify your email address before logging in.');
         } else if (status === 'account_locked') {
@@ -225,7 +249,32 @@ export default function LoginModal({ isOpen, onClose }) {
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 title={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? '👁️‍🗨️' : '👁️'}
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            
+            {/* Forgot Password Link */}
+            <div style={{
+              marginTop: 'var(--space-2)',
+              textAlign: 'right'
+            }}>
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary-blue)',
+                  fontSize: 'var(--text-sm)',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                  transition: 'color var(--transition-fast)'
+                }}
+                onMouseOver={(e) => e.target.style.color = 'var(--primary-blue-dark)'}
+                onMouseOut={(e) => e.target.style.color = 'var(--primary-blue)'}
+              >
+                Forgot Password?
               </button>
             </div>
           </div>
@@ -256,6 +305,30 @@ export default function LoginModal({ isOpen, onClose }) {
             </div>
           )}
 
+          {redirecting && (
+            <div style={{
+              marginBottom: 'var(--space-4)',
+              padding: 'var(--space-3)',
+              backgroundColor: 'var(--info-bg)',
+              color: 'var(--info-text)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 'var(--text-sm)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
+            }}>
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid var(--info-text)',
+                borderTop: '2px solid transparent',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}></div>
+              Redirecting to your dashboard...
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             <button
               type="button"
@@ -277,38 +350,37 @@ export default function LoginModal({ isOpen, onClose }) {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || redirecting}
               style={{
                 flex: 1,
                 padding: 'var(--space-3)',
                 border: '1px solid var(--primary-blue)',
                 borderRadius: 'var(--radius-md)',
-                backgroundColor: loading ? 'var(--gray-300)' : 'var(--primary-blue)',
+                backgroundColor: (loading || redirecting) ? 'var(--gray-300)' : 'var(--primary-blue)',
                 color: 'var(--text-inverse)',
                 fontSize: 'var(--text-sm)',
                 fontWeight: 'var(--font-medium)',
-                cursor: loading ? 'not-allowed' : 'pointer',
+                cursor: (loading || redirecting) ? 'not-allowed' : 'pointer',
                 transition: 'all var(--transition-fast)'
               }}
             >
-              {loading ? 'Logging in...' : 'Login'}
+              {loading ? 'Logging in...' : redirecting ? 'Redirecting...' : 'Login'}
             </button>
           </div>
         </form>
-
-        <div style={{
-          marginTop: 'var(--space-4)',
-          padding: 'var(--space-3)',
-          backgroundColor: 'var(--info-bg)',
-          color: 'var(--info-text)',
-          borderRadius: 'var(--radius-md)',
-          fontSize: 'var(--text-xs)'
-        }}>
-          💡 <strong>Demo Credentials:</strong><br />
-          Email: demo@eros.com<br />
-          Password: DemoPass123!
-        </div>
       </div>
+      
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal 
+        isOpen={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+        onSwitchToReset={() => {
+          setShowForgotPassword(false);
+          setEmail('');
+          setPassword('');
+        }}
+      />
     </div>
   );
 }
+// make this login modal better

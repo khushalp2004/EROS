@@ -183,28 +183,31 @@ def create_unit():
         if existing_unit:
             return jsonify({"error": "Vehicle number already exists"}), 409
         
-        # Validate service type
-        valid_service_types = ['Ambulance', 'Fire', 'Police']
-        service_type_input = data['service_type'].strip()
+        # Validate service type with backwards compatibility
+        valid_service_types = ['AMBULANCE', 'FIRE_TRUCK', 'POLICE']
+        # Legacy support for old format
+        legacy_mapping = {
+            'Ambulance': 'AMBULANCE',
+            'Fire': 'FIRE_TRUCK', 
+            'Police': 'POLICE',
+            'ambulance': 'AMBULANCE',
+            'fire': 'FIRE_TRUCK',
+            'police': 'POLICE'
+        }
         
-        # Check for exact match or case-insensitive match
-        if service_type_input not in valid_service_types:
-            # Check for case-insensitive match
-            matching_type = None
-            for valid_type in valid_service_types:
-                if service_type_input.lower() == valid_type.lower():
-                    matching_type = valid_type
-                    break
-            
-            if matching_type:
-                # Use the properly cased version from valid_service_types
-                data['service_type'] = matching_type
-            else:
-                return jsonify({
-                    "error": f"Invalid service type. Must be one of: {valid_service_types}",
-                    "received": service_type_input,
-                    "valid_types": valid_service_types
-                }), 400
+        service_type_input = data['service_type'].strip().upper()
+        
+        # Map legacy service types to new format
+        if service_type_input in legacy_mapping:
+            data['service_type'] = legacy_mapping[service_type_input]
+        elif service_type_input in valid_service_types:
+            data['service_type'] = service_type_input
+        else:
+            return jsonify({
+                "error": f"Invalid service type. Must be one of: {valid_service_types}",
+                "received": service_type_input,
+                "valid_types": valid_service_types
+            }), 400
         
         # Create new unit
         new_unit = Unit(
@@ -272,23 +275,26 @@ def get_unit_routes(unit_id):
             print(f"Error parsing polylines_position for unit {unit_id}")
             route_positions = None
     
-    # 🔧 CRITICAL: Calculate progress with fresh start handling
+    # 🔧 FIXED: Calculate progress with improved logic
     dispatch_time = route_calc.timestamp
     current_time = datetime.utcnow()
     elapsed_seconds = (current_time - dispatch_time).total_seconds()
     estimated_duration = route_calc.duration or 300  # Default 5 minutes if no duration
     
-    # 🔧 FIX: Start with 0% progress for fresh dispatches (within first 2 minutes)
+    # 🔧 FIXED: Fresh dispatches start with reasonable progress
     time_since_dispatch = elapsed_seconds
-    is_fresh_dispatch = time_since_dispatch < 120  # First 2 minutes = fresh start
+    is_fresh_dispatch = time_since_dispatch < 60  # First minute = fresh start
     
     if is_fresh_dispatch:
-        # 🚀 FRESH DISPATCH: Start at 0% and gradually increase
-        progress = max(0.0, min(0.1, time_since_dispatch / 300))  # Max 10% in first 2 minutes
+        # 🚀 FRESH DISPATCH: Start with 5% progress and increase more naturally
+        initial_progress = 0.05  # Start at 5%
+        progress = initial_progress + (time_since_dispatch / 300) * 0.20  # Up to 25% in first minute
+        progress = min(progress, 0.30)  # Cap at 30% in first minute
         print(f"🚨 Fresh unit route dispatch: Unit {unit_id}, {time_since_dispatch:.1f}s elapsed, progress: {progress:.3f}")
     else:
-        # Progressive increase for established routes
-        progress = min(elapsed_seconds / estimated_duration, 0.95)  # Cap at 95% for animation
+        # ✅ FIXED: Allow full progression without artificial caps
+        time_based_progress = elapsed_seconds / estimated_duration
+        progress = min(time_based_progress, 1.0)  # Allow 100% completion
     
     # Determine current position along route
     current_position = None
@@ -372,7 +378,7 @@ def get_active_unit_routes():
             except json.JSONDecodeError:
                 continue
         
-        # 🔧 CRITICAL: Calculate progress with fresh start handling
+        # 🔧 FIXED: Calculate progress with improved logic
         progress = 0.0
         current_unit_location = UnitLocation.query.filter_by(unit_id=route_calc.unit_id, is_active=True)\
             .order_by(UnitLocation.timestamp.desc()).first()
@@ -381,33 +387,36 @@ def get_active_unit_routes():
         elapsed_seconds = (current_time - dispatch_time).total_seconds()
         estimated_duration = route_calc.duration or 300
         
-        # 🔧 FIX: Start with 0% progress for fresh dispatches (within first 2 minutes)
-        # This prevents immediate 100% progress calculation issues
+        # 🔧 FIXED: Fresh dispatches start with reasonable progress
         time_since_dispatch = elapsed_seconds
-        is_fresh_dispatch = time_since_dispatch < 120  # First 2 minutes = fresh start
+        is_fresh_dispatch = time_since_dispatch < 60  # First minute = fresh start
         
         if is_fresh_dispatch:
-            # 🚀 FRESH DISPATCH: Start at 0% and gradually increase
-            progress = max(0.0, min(0.1, time_since_dispatch / 300))  # Max 10% in first 2 minutes
+            # 🚀 FRESH DISPATCH: Start with 5% progress and increase more naturally
+            initial_progress = 0.05  # Start at 5%
+            progress = initial_progress + (time_since_dispatch / 300) * 0.20  # Up to 25% in first minute
+            progress = min(progress, 0.30)  # Cap at 30% in first minute
             print(f"🚨 Fresh dispatch detected for Unit {route_calc.unit_id}: {time_since_dispatch:.1f}s elapsed, progress: {progress:.3f}")
         elif current_unit_location and route_calc.route_geometry:
-            # Use GPS-based progress calculation for established routes
+            # ✅ FIXED: Use GPS-based progress calculation for established routes
             try:
                 gps_progress = calculate_route_progress(
                     current_unit_location.latitude,
                     current_unit_location.longitude,
                     route_calc.route_geometry
                 )
-                # Ensure GPS progress doesn't jump to 100% immediately
-                progress = min(gps_progress, 0.95)  # Cap at 95% to allow animation
+                # ✅ FIXED: Allow full GPS progress without artificial caps
+                progress = min(gps_progress, 1.0)  # Allow 100% completion
                 print(f"📍 GPS progress for Unit {route_calc.unit_id}: {progress:.3f}")
             except Exception as e:
                 print(f"⚠️ GPS progress calculation failed for Unit {route_calc.unit_id}: {e}")
-                # Fallback to conservative time-based progress
-                progress = min(elapsed_seconds / estimated_duration, 0.95)
+                # ✅ FIXED: Fallback to time-based calculation without caps
+                time_based_progress = elapsed_seconds / estimated_duration
+                progress = min(time_based_progress, 1.0)  # Allow 100% completion
         else:
-            # Fallback to time-based calculation if no GPS data available
-            progress = min(elapsed_seconds / estimated_duration, 0.95)  # Cap at 95%
+            # ✅ FIXED: Time-based calculation without caps
+            time_based_progress = elapsed_seconds / estimated_duration
+            progress = min(time_based_progress, 1.0)  # Allow 100% completion
         
         emergency = None
         if route_calc.emergency_id:

@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from models import db, User
 from services.email_service import email_service
 from utils.validators import validate_required_fields, validate_role
+from routes.notification_routes import create_system_notification
 import traceback
 import functools
 
@@ -336,6 +337,22 @@ def approve_user(user_id):
             except Exception as e:
                 # Log error but don't fail the approval
                 print(f"Failed to send approval notification: {str(e)}")
+        
+        # Send in-app notification to admin users about the approval
+        try:
+            admin_notification_message = f"User {user.first_name} {user.last_name} ({user.email}) has been approved and activated."
+            if custom_message:
+                admin_notification_message += f" Custom message: {custom_message}"
+            
+            create_system_notification(
+                title="User Approved",
+                message=admin_notification_message,
+                priority='normal',
+                target_roles=['admin']  # Only notify other admin users
+            )
+        except Exception as e:
+            # Log error but don't fail the approval
+            print(f"Failed to send admin notification: {str(e)}")
         
         return jsonify({
             'success': True,

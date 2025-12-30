@@ -13,6 +13,7 @@ import {
 function EmergencyList({
   emergencies = [],
   onSelect,
+  onCenterMap,
   selectedId,
   onDispatch,
   onComplete,
@@ -78,9 +79,14 @@ function EmergencyList({
           {emergencies.map((emergency, index) => (
             <tr
               key={emergency.request_id}
-              onClick={() => onSelect && onSelect(emergency)}
+              onClick={() => {
+                onSelect && onSelect(emergency);
+                if (onCenterMap && emergency.latitude && emergency.longitude) {
+                  onCenterMap(emergency.latitude, emergency.longitude);
+                }
+              }}
               style={{
-                cursor: onSelect ? "pointer" : "default",
+                cursor: onSelect || onCenterMap ? "pointer" : "default",
                 background: selectedId === emergency.request_id ? "var(--primary-blue-light)" : 
                            index % 2 === 0 ? "transparent" : "var(--gray-50)",
                 transition: "all var(--transition-fast)"
@@ -172,7 +178,14 @@ function EmergencyList({
                     <button
                       onClick={(event) => {
                         event.stopPropagation();
-                        onDispatch && onDispatch(emergency);
+                        console.log('🟡 Dispatch button clicked for emergency:', emergency.request_id);
+                        console.log('Available units for type:', emergency.emergency_type, availableByType[emergency.emergency_type] || 0);
+                        if (onDispatch) {
+                          console.log('✅ Calling onDispatch handler...');
+                          onDispatch(emergency);
+                        } else {
+                          console.error('❌ onDispatch handler is not available!');
+                        }
                       }}
                       disabled={(availableByType[emergency.emergency_type] || 0) === 0}
                       className="btn btn-success btn-sm"
@@ -196,7 +209,13 @@ function EmergencyList({
                     <button
                       onClick={(event) => {
                         event.stopPropagation();
-                        onComplete && onComplete(emergency);
+                        console.log('🟡 Complete button clicked for emergency:', emergency.request_id);
+                        if (onComplete) {
+                          console.log('✅ Calling onComplete handler...');
+                          onComplete(emergency);
+                        } else {
+                          console.error('❌ onComplete handler is not available!');
+                        }
                       }}
                       className="btn btn-primary btn-sm"
                       style={{

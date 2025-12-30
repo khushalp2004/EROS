@@ -7,10 +7,27 @@ import json
 
 notification_bp = Blueprint('notifications', __name__)
 
-def send_notification(notification_data, user_id=None, broadcast=False):
-    """Helper function to send notifications via WebSocket and save to database"""
+def send_notification(notification_data, user_id=None, broadcast=False, target_user_ids=None):
+    """Helper function to send notifications via WebSocket and save to database with role-based filtering"""
     try:
-        # Save to database
+        # If target_user_ids is specified, only send to those users
+        if target_user_ids is not None:
+            notifications_created = []
+            for target_user_id in target_user_ids:
+                notification = Notification(**notification_data)
+                notification.user_id = target_user_id
+                db.session.add(notification)
+                notifications_created.append(notification)
+            
+            db.session.commit()
+            
+            # Send via WebSocket to each target user
+            for notification in notifications_created:
+                socketio.emit('notification', notification.to_dict())
+            
+            return [n.to_dict() for n in notifications_created]
+        
+        # Original logic for broadcast or single user
         notification = Notification(**notification_data)
         if user_id:
             notification.user_id = user_id
@@ -212,8 +229,15 @@ def update_notification_preferences():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # Emergency-related notification helpers
-def create_emergency_notification(emergency, action, user_id=None):
-    """Create notifications for emergency events"""
+def create_emergency_notification(emergency, action, user_id=None, target_roles=None):
+    """Create notifications for emergency events with role-based filtering"""
+    # Get target users based on roles if specified
+    target_user_ids = None
+    if target_roles:
+        from models import User
+        target_users = User.query.filter(User.role.in_(target_roles)).all()
+        target_user_ids = [user.id for user in target_users]
+    
     title_map = {
         'created': f'New {emergency.emergency_type} Emergency',
         'approved': f'{emergency.emergency_type} Emergency Approved',
@@ -243,10 +267,17 @@ def create_emergency_notification(emergency, action, user_id=None):
         'category': f'status_update_{action}',
         'emergency_id': emergency.request_id,
         'action_url': f'/dashboard?emergency={emergency.request_id}'
-    }, user_id=user_id, broadcast=True)
+    }, user_id=user_id, broadcast=True, target_user_ids=target_user_ids)
 
-def create_unit_notification(unit, action, user_id=None, emergency=None):
-    """Create notifications for unit events"""
+def create_unit_notification(unit, action, user_id=None, emergency=None, target_roles=None):
+    """Create notifications for unit events with role-based filtering"""
+    # Get target users based on roles if specified
+    target_user_ids = None
+    if target_roles:
+        from models import User
+        target_users = User.query.filter(User.role.in_(target_roles)).all()
+        target_user_ids = [user.id for user in target_users]
+    
     title_map = {
         'dispatched': f'Unit {unit.unit_id} Dispatched',
         'arrived': f'Unit {unit.unit_id} Arrived',
@@ -279,10 +310,17 @@ def create_unit_notification(unit, action, user_id=None, emergency=None):
     else:
         notification_data['action_url'] = '/dashboard'
     
-    return send_notification(notification_data, user_id=user_id, broadcast=True)
+    return send_notification(notification_data, user_id=user_id, broadcast=True, target_user_ids=target_user_ids)
 
-def create_system_notification(title, message, priority='normal', user_id=None, action_url=None):
-    """Create system-wide notifications"""
+def create_system_notification(title, message, priority='normal', user_id=None, action_url=None, target_roles=None):
+    """Create system-wide notifications with role-based filtering"""
+    # Get target users based on roles if specified
+    target_user_ids = None
+    if target_roles:
+        from models import User
+        target_users = User.query.filter(User.role.in_(target_roles)).all()
+        target_user_ids = [user.id for user in target_users]
+    
     return send_notification({
         'type': 'system',
         'title': title,
@@ -290,4 +328,4 @@ def create_system_notification(title, message, priority='normal', user_id=None, 
         'priority': priority,
         'category': 'system_alert',
         'action_url': action_url or '/dashboard'
-    }, user_id=user_id, broadcast=True)
+    }, user_id=user_id, broadcast=True, target_user_ids=target_user_ids)

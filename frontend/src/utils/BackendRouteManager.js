@@ -50,13 +50,17 @@ class BackendRouteManager {
   }
 
   /**
-   * Get current progress for unit
+   * Get current progress for unit with enhanced validation
    * @param {string|number} unitId - Unit identifier
    * @returns {number} Progress (0.0 to 1.0)
    */
   getProgress(unitId) {
     const routeData = this.getRouteData(unitId);
-    return routeData?.route?.progress || 0;
+    if (!routeData || !routeData.route) return 0;
+    
+    // ✅ FIXED: Ensure progress is within valid range (0.0 to 1.0)
+    const progress = routeData.route.progress || 0;
+    return Math.max(0, Math.min(1, progress));
   }
 
   /**
@@ -195,7 +199,7 @@ class BackendRouteManager {
   }
 
   /**
-   * Get estimated time of arrival for unit
+   * Get estimated time of arrival for unit with enhanced calculation
    * @param {string|number} unitId - Unit identifier
    * @returns {number|null} ETA in minutes or null
    */
@@ -204,10 +208,64 @@ class BackendRouteManager {
     if (!routeData || !routeData.route) return null;
 
     const { progress, estimated_duration } = routeData.route;
+    
+    // ✅ FIXED: Handle completed routes properly
     if (progress >= 1.0) return 0;
+    if (progress < 0) return null;
 
     const remainingDuration = estimated_duration * (1 - progress);
-    return Math.ceil(remainingDuration / 60); // Convert to minutes
+    return Math.max(0, Math.ceil(remainingDuration / 60)); // Convert to minutes
+  }
+
+  /**
+   * ✅ FIXED: Update progress for a specific unit (for GPS integration)
+   * @param {string|number} unitId - Unit identifier
+   * @param {number} progress - New progress value (0.0 to 1.0)
+   * @param {Array} currentPosition - Current position [lat, lng]
+   * @returns {boolean} Success status
+   */
+  updateProgress(unitId, progress, currentPosition = null) {
+    const routeData = this.getRouteData(unitId);
+    if (!routeData || !routeData.route) return false;
+
+    // ✅ FIXED: Validate progress range
+    const validatedProgress = Math.max(0, Math.min(1, progress));
+    
+    // Update the route data
+    routeData.route.progress = validatedProgress;
+    
+    if (currentPosition && Array.isArray(currentPosition) && currentPosition.length === 2) {
+      routeData.route.current_position = currentPosition;
+    }
+    
+    routeData.route.lastUpdate = Date.now();
+    
+    console.log(`📊 Updated progress for unit ${unitId}: ${(validatedProgress * 100).toFixed(1)}%`);
+    
+    // Notify subscribers
+    this.notifySubscribers();
+    
+    return true;
+  }
+
+  /**
+   * ✅ FIXED: Check if route is completed
+   * @param {string|number} unitId - Unit identifier
+   * @returns {boolean} True if route is completed
+   */
+  isRouteCompleted(unitId) {
+    const progress = this.getProgress(unitId);
+    return progress >= 1.0;
+  }
+
+  /**
+   * ✅ FIXED: Get route completion percentage
+   * @param {string|number} unitId - Unit identifier
+   * @returns {number} Completion percentage (0 to 100)
+   */
+  getCompletionPercentage(unitId) {
+    const progress = this.getProgress(unitId);
+    return Math.round(progress * 100);
   }
 
   /**

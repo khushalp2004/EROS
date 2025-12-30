@@ -34,17 +34,29 @@ def add_emergency():
     if not emergency_type or latitude is None or longitude is None:
         return jsonify({'error': 'Missing fields'}), 400
     
+    # Normalize emergency type to uppercase format
+    type_mapping = {
+        'Ambulance': 'AMBULANCE',
+        'Fire': 'FIRE_TRUCK', 
+        'Police': 'POLICE',
+        'ambulance': 'AMBULANCE',
+        'fire': 'FIRE_TRUCK',
+        'police': 'POLICE'
+    }
+    
+    normalized_type = type_mapping.get(emergency_type, emergency_type.upper())
+    
     new_emergency = Emergency(
-        emergency_type=emergency_type,
+        emergency_type=normalized_type,
         latitude=latitude,
         longitude=longitude
     )
     db.session.add(new_emergency)
     db.session.commit()
 
-    # Create notification for new emergency
+    # Create notification for new emergency - only for authority users
     create_emergency_notification(new_emergency, 'created')
-    create_system_notification(f"New {emergency_type} emergency reported at location ({latitude}, {longitude})", 'info')
+    create_system_notification(f"New {emergency_type} emergency reported at location ({latitude}, {longitude})", 'info', target_roles=['authority'])
 
     # Emit real-time event for new emergency
     emergency_data = {

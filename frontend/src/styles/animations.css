@@ -1,0 +1,648 @@
+/*
+  EROS Design System - Animation Guidelines
+  Comprehensive animation patterns for consistent user experience
+*/
+
+/* ===== ANIMATION FOUNDATION ===== */
+:root {
+  /* Animation Timing Functions */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --ease-smooth: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  /* Animation Durations */
+  --duration-instant: 0.15s;
+  --duration-fast: 0.25s;
+  --duration-normal: 0.35s;
+  --duration-slow: 0.5s;
+  --duration-slower: 0.75s;
+
+  /* Animation Variables */
+  --animation-speed: var(--duration-normal);
+  --animation-easing: var(--ease-out);
+  --animation-bounce: var(--ease-bounce);
+}
+
+/* ===== REUSABLE ANIMATION CLASSES ===== */
+
+/* Fade Animations */
+.fade-in {
+  animation: fadeIn var(--duration-normal) var(--ease-out) forwards;
+}
+
+.fade-out {
+  animation: fadeOut var(--duration-fast) var(--ease-in) forwards;
+}
+
+.fade-in-up {
+  animation: fadeInUp var(--duration-normal) var(--ease-out) forwards;
+}
+
+.fade-in-down {
+  animation: fadeInDown var(--duration-normal) var(--ease-out) forwards;
+}
+
+.fade-in-left {
+  animation: fadeInLeft var(--duration-normal) var(--ease-out) forwards;
+}
+
+.fade-in-right {
+  animation: fadeInRight var(--duration-normal) var(--ease-out) forwards;
+}
+
+/* Scale Animations */
+.scale-in {
+  animation: scaleIn var(--duration-normal) var(--ease-out) forwards;
+}
+
+.scale-out {
+  animation: scaleOut var(--duration-fast) var(--ease-in) forwards;
+}
+
+.scale-in-center {
+  animation: scaleInCenter var(--duration-normal) var(--ease-bounce) forwards;
+}
+
+/* Slide Animations */
+.slide-in-right {
+  animation: slideInRight var(--duration-normal) var(--ease-out) forwards;
+}
+
+.slide-in-left {
+  animation: slideInLeft var(--duration-normal) var(--ease-out) forwards;
+}
+
+.slide-in-up {
+  animation: slideInUp var(--duration-normal) var(--ease-out) forwards;
+}
+
+.slide-in-down {
+  animation: slideInDown var(--duration-normal) var(--ease-out) forwards;
+}
+
+/* Bounce Animations */
+.bounce-in {
+  animation: bounceIn var(--duration-slower) var(--ease-bounce) forwards;
+}
+
+.bounce-in-down {
+  animation: bounceInDown var(--duration-slower) var(--ease-bounce) forwards;
+}
+
+.bounce-in-up {
+  animation: bounceInUp var(--duration-slower) var(--ease-bounce) forwards;
+}
+
+/* Shake Animations */
+.shake {
+  animation: shake var(--duration-fast) var(--ease-in-out) forwards;
+}
+
+.shake-horizontal {
+  animation: shakeHorizontal var(--duration-fast) var(--ease-in-out) forwards;
+}
+
+/* Pulse Animations */
+.pulse {
+  animation: pulse var(--duration-slow) var(--ease-in-out) infinite;
+}
+
+.pulse-slow {
+  animation: pulse var(--duration-slower) var(--ease-in-out) infinite;
+}
+
+.pulse-fast {
+  animation: pulse var(--duration-normal) var(--ease-in-out) infinite;
+}
+
+/* Spin Animations */
+.spin {
+  animation: spin var(--duration-normal) linear infinite;
+}
+
+.spin-reverse {
+  animation: spinReverse var(--duration-normal) linear infinite;
+}
+
+.spin-slow {
+  animation: spin var(--duration-slower) linear infinite;
+}
+
+/* Pulse Border Animations */
+.pulse-border {
+  animation: pulseBorder var(--duration-slow) var(--ease-in-out) infinite;
+}
+
+.pulse-border-danger {
+  animation: pulseBorderDanger var(--duration-slow) var(--ease-in-out) infinite;
+}
+
+.pulse-border-success {
+  animation: pulseBorderSuccess var(--duration-slow) var(--ease-in-out) infinite;
+}
+
+/* Loading Animations */
+.loading-dots {
+  animation: loadingDots 1.5s var(--ease-in-out) infinite;
+}
+
+.loading-spinner {
+  animation: loadingSpinner var(--duration-normal) linear infinite;
+}
+
+.loading-pulse {
+  animation: loadingPulse var(--duration-slow) var(--ease-in-out) infinite;
+}
+
+/* Hover Animations */
+.hover-lift {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+.hover-scale {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+.hover-glow {
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(37, 99, 235, 0.3);
+}
+
+/* ===== KEYFRAME DEFINITIONS ===== */
+
+/* Fade Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Scale Animations */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scaleOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes scaleInCenter {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Slide Animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInDown {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Bounce Animations */
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bounceInDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-2000px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(30px);
+  }
+  80% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounceInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(2000px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-30px);
+  }
+  80% {
+    transform: translateY(10px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* Shake Animations */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes shakeHorizontal {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-10px);
+  }
+  75% {
+    transform: translateX(10px);
+  }
+}
+
+/* Pulse Animations */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Spin Animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spinReverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+/* Pulse Border Animations */
+@keyframes pulseBorder {
+  0% {
+    border-color: rgba(37, 99, 235, 0.3);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.3);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(37, 99, 235, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+  }
+}
+
+@keyframes pulseBorderDanger {
+  0% {
+    border-color: rgba(220, 38, 38, 0.3);
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.3);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+
+@keyframes pulseBorderSuccess {
+  0% {
+    border-color: rgba(22, 163, 74, 0.3);
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.3);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(22, 163, 74, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0);
+  }
+}
+
+/* Loading Animations */
+@keyframes loadingDots {
+  0%, 20% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  80%, 100% {
+    opacity: 0;
+  }
+}
+
+@keyframes loadingSpinner {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loadingPulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ===== INTERACTION ANIMATIONS ===== */
+
+/* Button Interactions */
+.btn-press {
+  transition: transform var(--duration-instant) var(--ease-in);
+}
+
+.btn-press:active {
+  transform: scale(0.98);
+}
+
+.btn-bounce {
+  transition: transform var(--duration-fast) var(--ease-bounce);
+}
+
+.btn-bounce:hover {
+  transform: translateY(-2px);
+}
+
+.btn-bounce:active {
+  transform: translateY(0);
+}
+
+/* Card Interactions */
+.card-hover {
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
+
+.card-press {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.card-press:active {
+  transform: scale(0.98);
+}
+
+/* Status Animations */
+.status-pulse-success {
+  animation: statusPulseSuccess 2s var(--ease-in-out) infinite;
+}
+
+.status-pulse-warning {
+  animation: statusPulseWarning 2.5s var(--ease-in-out) infinite;
+}
+
+.status-pulse-danger {
+  animation: statusPulseDanger 1.5s var(--ease-in-out) infinite;
+}
+
+@keyframes statusPulseSuccess {
+  0%, 100% {
+    background-color: var(--status-success);
+  }
+  50% {
+    background-color: #22c55e;
+  }
+}
+
+@keyframes statusPulseWarning {
+  0%, 100% {
+    background-color: var(--status-warning);
+  }
+  50% {
+    background-color: #f59e0b;
+  }
+}
+
+@keyframes statusPulseDanger {
+  0%, 100% {
+    background-color: var(--status-danger);
+  }
+  50% {
+    background-color: #dc2626;
+  }
+}
+
+/* ===== ACCESSIBILITY ANIMATIONS ===== */
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .fade-in,
+  .fade-out,
+  .scale-in,
+  .scale-out,
+  .bounce-in,
+  .pulse,
+  .spin {
+    animation: none !important;
+  }
+
+  .hover-lift:hover,
+  .hover-scale:hover,
+  .hover-glow:hover {
+    transform: none !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .pulse-border,
+  .pulse-border-danger,
+  .pulse-border-success {
+    animation: none;
+  }
+}
+
+/* ===== UTILITY CLASSES ===== */
+
+/* Animation delays for staggered effects */
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-500 { animation-delay: 0.5s; }
+
+/* Animation fill modes */
+.fill-forwards { animation-fill-mode: forwards; }
+.fill-backwards { animation-fill-mode: backwards; }
+.fill-both { animation-fill-mode: both; }
+
+/* Animation iteration counts */
+.iteration-1 { animation-iteration-count: 1; }
+.iteration-2 { animation-iteration-count: 2; }
+.iteration-3 { animation-iteration-count: 3; }
+.iteration-infinite { animation-iteration-count: infinite; }
+
+/* Animation direction */
+.direction-normal { animation-direction: normal; }
+.direction-reverse { animation-direction: reverse; }
+.direction-alternate { animation-direction: alternate; }
+.direction-alternate-reverse { animation-direction: alternate-reverse; }

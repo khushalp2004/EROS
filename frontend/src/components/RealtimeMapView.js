@@ -255,40 +255,77 @@ function MapAutoCenter({ center }) {
 function AnimatedPolyline({
   positions,
   color = "#0066ff",
-  progress = 1,
-  showProgress = true,
   isAnimated = false,
   pathOptions = {},
   isRealtime = false,
   serviceType = null,
   unitId = null,
-  routeId = null
+  routeId = null,
+  progress = 0 // NEW: Progress percentage (0-1)
 }) {
-  // ✅ SIMPLIFIED: Calculate moving marker position based on progress
-  const movingMarkerPosition = React.useMemo(() => {
-    if (!positions || positions.length < 2) return null;
+  if (!positions || positions.length === 0) return null;
+  if (positions.length < 2) return null;
 
-    // Simple linear interpolation based on progress
-    const index = Math.floor(progress * (positions.length - 1));
-    return positions[index];
-  }, [positions, progress]);
+  // Calculate positions based on progress
+  const getProgressPositions = (positions, progress) => {
+    if (!isRealtime || progress === 0) return [];
+    if (progress >= 1.0) return positions;
+    
+    const totalPositions = positions.length;
+    const progressIndex = Math.floor(totalPositions * progress);
+    
+    // Ensure we have at least the starting position
+    const progressPositions = positions.slice(0, Math.max(2, progressIndex + 1));
+    
+    // If we have a fractional position, interpolate the last point
+    if (progressIndex < totalPositions - 1) {
+      const fractionalPart = (totalPositions * progress) - progressIndex;
+      if (fractionalPart > 0) {
+        const startPoint = positions[progressIndex];
+        const endPoint = positions[progressIndex + 1];
+        
+        // Linear interpolation for the fractional position
+        const interpolatedPoint = [
+          startPoint[0] + (endPoint[0] - startPoint[0]) * fractionalPart,
+          startPoint[1] + (endPoint[1] - startPoint[1]) * fractionalPart
+        ];
+        
+        progressPositions[progressPositions.length - 1] = interpolatedPoint;
+      }
+    }
+    
+    return progressPositions;
+  };
 
-
-  // Calculate visible positions based on progress
-  const animatedPositions = React.useMemo(() => {
-    if (!positions || positions.length === 0) return [];
-    return positions.slice(0, Math.max(2, Math.ceil(positions.length * progress)));
-  }, [positions, progress]);
-
-  if (animatedPositions.length === 0) return null;
+  // Get current position based on progress
+  const getCurrentPosition = (positions, progress) => {
+    if (progress <= 0) return positions[0];
+    if (progress >= 1.0) return positions[positions.length - 1];
+    
+    const totalPositions = positions.length;
+    const progressIndex = Math.floor(totalPositions * progress);
+    const fractionalPart = (totalPositions * progress) - progressIndex;
+    
+    if (progressIndex >= totalPositions - 1) {
+      return positions[totalPositions - 1];
+    }
+    
+    const startPoint = positions[progressIndex];
+    const endPoint = positions[progressIndex + 1];
+    
+    return [
+      startPoint[0] + (endPoint[0] - startPoint[0]) * fractionalPart,
+      startPoint[1] + (endPoint[1] - startPoint[1]) * fractionalPart
+    ];
+  };
 
   // Get service emoji based on service type
   const getServiceEmoji = () => {
     switch (serviceType) {
-      case 'AMBULANCE': return '';
-      case 'FIRE_TRUCK': return '';
-      case 'POLICE': return '';
-      default: return '';
+      case 'AMBULANCE': return '🚑';
+      case 'FIRE_TRUCK': return '🚒';
+      case 'POLICE': return '🚓';
+      default: return '🚐';
     }
   };
 
@@ -306,9 +343,9 @@ function AnimatedPolyline({
   const defaultOptions = {
     color: color,
     weight: isRealtime ? 6 : 4,
-    opacity: isAnimated ? 1 : 0.8,
-    dashArray: isAnimated ? null : (showProgress ? null : "10 10"),
-    className: isAnimated ? "animated-polyline enhanced-route-line" : ""
+    opacity: isRealtime ? 1.0 : 0.8,
+    dashArray: isRealtime ? null : "10 10",
+    className: "enhanced-route-line"
   };
 
   const mergedOptions = { ...defaultOptions, ...pathOptions };
@@ -318,163 +355,141 @@ function AnimatedPolyline({
     mergedOptions.className += ` ${getRouteClass()}`;
   }
 
+  // Get progress-based data
+  const progressPositions = getProgressPositions(positions, progress);
+  const currentPosition = getCurrentPosition(positions, progress);
+  const completedPositions = getProgressPositions(positions, 1.0); // Complete route for reference
+
   return (
-    <div className={isAnimated ? "animated-polyline-container" : ""}>
-      {/* Full route background */}
-      {positions.length > 1 && (
+    <div>
+      {/* Complete route line (faded, for reference) */}
+      {isRealtime && (
         <Polyline
-          positions={positions}
+          positions={completedPositions}
           pathOptions={{
-            color: color,
+            ...mergedOptions,
+            opacity: 0.3,
             weight: 2,
-            opacity: 0.2,
-            dashArray: "3 3"
-          }}
-        />
-      )}
-
-      {/* Animated progress route */}
-      {animatedPositions.length > 1 && (
-        <Polyline
-          positions={animatedPositions}
-          pathOptions={mergedOptions}
-        />
-      )}
-
-      {/* Route progress indicator */}
-      {showProgress && animatedPositions.length < positions.length && (
-        <Polyline
-          positions={[animatedPositions[animatedPositions.length - 1], positions[animatedPositions.length]]}
-          pathOptions={{
-            color: mergedOptions.color,
-            weight: Math.max(2, (mergedOptions.weight || 4) - 2),
-            opacity: 0.6,
+            color: color + '80', // Add transparency
             dashArray: "5 5"
           }}
         />
       )}
 
-      {/* Moving service emoji marker */}
-      {isAnimated && movingMarkerPosition && serviceType && (
+      {/* Progress-based animated polyline */}
+      {progressPositions.length > 0 && (
+        <Polyline
+          positions={progressPositions}
+          pathOptions={{
+            ...mergedOptions,
+            className: `progress-route-line ${getRouteClass()}`,
+            weight: isRealtime ? 8 : 6, // Thicker for progress
+            opacity: isRealtime ? 1.0 : 0.8
+          }}
+        />
+      )}
+
+      {/* Moving unit marker at current position with integrated status */}
+      {isRealtime && progress > 0 && (
         <Marker
-          position={movingMarkerPosition}
+          position={currentPosition}
           icon={L.divIcon({
-            className: "route-emoji-moving service-emoji-pulse",
+            className: "moving-unit-marker",
             html: `
               <div style="
                 position: relative;
-                width: 32px;
-                height: 32px;
-                background: rgba(255, 255, 255, 0.9);
-                border: 2px solid ${color};
+                width: 40px;
+                height: 40px;
+                background: ${color};
+                border: 3px solid white;
                 border-radius: 50%;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                font-size: 16px;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                font-size: 14px;
+                color: white;
+                font-weight: bold;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+                animation: unitMovePulse 1.5s infinite;
                 z-index: 1000;
               ">
-                ${getServiceEmoji()}
+                <!-- Service Emoji -->
+                <div style="font-size: 14px; margin-bottom: 1px;">
+                  ${getServiceEmoji()}
+                </div>
+                <!-- Status Text -->
+                <div style="
+                  font-size: 8px;
+                  font-weight: bold;
+                  background: rgba(0,0,0,0.7);
+                  padding: 1px 3px;
+                  border-radius: 4px;
+                  line-height: 1;
+                  margin-top: 1px;
+                ">
+                  ${progress < 0.1 ? 'DEPARTED' : 
+                    progress < 0.9 ? 'ENROUTE' : 
+                    progress < 1.0 ? 'ARRIVING' : 'ARRIVED'}
+                </div>
+                <!-- Progress Percentage -->
+                <div style="
+                  position: absolute;
+                  top: -25px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  background: rgba(0, 0, 0, 0.8);
+                  color: white;
+                  padding: 2px 4px;
+                  border-radius: 6px;
+                  font-size: 9px;
+                  font-weight: bold;
+                  white-space: nowrap;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                ">
+                  ${(progress * 100).toFixed(0)}%
+                </div>
               </div>
             `,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
+            iconSize: [40, 40],
+            iconAnchor: [20, 20],
           })}
-          zIndexOffset={1500}
+          zIndexOffset={1000}
         >
           <Popup>
             <div>
-              <strong>🚩 {serviceType} Unit {unitId}</strong><br/>
-              <small>Moving to destination</small><br/>
-              <small>Progress: {Math.round(progress * 100)}%</small>
-              {routeId && (
-                <>
-                  <br/>
-                  <small>Route: {routeId}</small>
-                </>
-              )}
+              <strong>🚗 Unit {unitId} - Route Progress</strong><br/>
+              <strong>Service:</strong> {serviceType}<br/>
+              <strong>Status:</strong> 
+              <span style={{ 
+                color: progress < 0.1 ? '#6c757d' : 
+                       progress < 0.9 ? '#007bff' : 
+                       progress < 1.0 ? '#ffc107' : '#28a745',
+                fontWeight: 'bold'
+              }}>
+                ${progress < 0.1 ? 'DEPARTED' : 
+                  progress < 0.9 ? 'ENROUTE' : 
+                  progress < 1.0 ? 'ARRIVING' : 'ARRIVED'}
+              </span><br/>
+              <strong>Progress:</strong> {(progress * 100).toFixed(1)}%<br/>
+              <small>Real-time tracking active</small>
             </div>
           </Popup>
         </Marker>
       )}
 
-      {/* Static service emoji on route (for non-animated routes) */}
-      {!isAnimated && serviceType && positions.length > 0 && (
-        <Marker
-          position={positions[Math.floor(positions.length / 2)]}
-          icon={L.divIcon({
-            className: "route-static-emoji",
-            html: `
-              <div style="
-                position: relative;
-                width: 28px;
-                height: 28px;
-                background: rgba(255, 255, 255, 0.95);
-                border: 2px solid ${color};
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 14px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                z-index: 1000;
-              ">
-                ${getServiceEmoji()}
-              </div>
-            `,
-            iconSize: [28, 28],
-            iconAnchor: [14, 14],
-          })}
-          zIndexOffset={800}
-        >
-          <Popup>
-            <div>
-              <strong>🚩 {serviceType} Route</strong><br/>
-              <small>Unit {unitId}</small>
-            </div>
-          </Popup>
-        </Marker>
-      )}
+
+
+
     </div>
   );
 }
 
-function RouteProgressIndicator({ progress, position }) {
-  return (
-    <Marker
-      position={position}
-      icon={L.divIcon({
-        className: "progress-indicator",
-        html: `
-          <div style="
-            width: 20px;
-            height: 20px;
-            background: #0066ff;
-            border: 2px solid white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 12px;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          ">
-            ${Math.round(progress * 100)}%
-          </div>
-        `,
-        iconSize: [20, 20],
-        iconAnchor: [10, 10],
-      })}
-      zIndexOffset={1000}
-    />
-  );
-}
+
 
 function MapView({ 
   markers, 
-  center, 
+  center = null, 
   polylines = [], 
   showRealtimeData = true, 
   animateRoutes = true, 
@@ -482,13 +497,40 @@ function MapView({
   onMapClick = null, 
   selectionMode = false, 
   zoom = null,
-  height = "500px" 
+  height = "500px",
+  showUnitMarkers = false
 }) {
   const defaultCenter = [19.076, 72.8777];
   const mapCenter = center || (markers.length === 1
     ? [markers[0].latitude, markers[0].longitude]
     : defaultCenter);
   const mapZoom = zoom || (markers.length === 1 ? 14 : 12);
+
+  // Helper function to calculate approximate progress based on position - MOVED HERE TO FIX INITIALIZATION
+  const calculateApproximateProgress = (routePositions, currentPosition) => {
+    if (!routePositions || routePositions.length < 2 || !currentPosition) {
+      return 0;
+    }
+
+    const [currLat, currLng] = currentPosition;
+    let minDistance = Infinity;
+    let closestIndex = 0;
+
+    // Find the closest point on the route
+    routePositions.forEach((point, index) => {
+      const [pointLat, pointLng] = point;
+      const distance = Math.sqrt(
+        Math.pow(currLat - pointLat, 2) + Math.pow(currLng - pointLng, 2)
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    // Return progress as percentage of route completed
+    return closestIndex / (routePositions.length - 1);
+  };
 
   // Use real-time unit data if enabled
   const realtimeData = useRealtimeUnitMarkers(markers);
@@ -507,19 +549,39 @@ function MapView({
     onclick: handleMapClick
   } : {};
 
-  // ✅ SIMPLIFIED: Process polylines for backend-driven routes
+  // ✅ SIMPLIFIED: Process polylines for backend-driven routes - Complete routes only
   const enhancedPolylines = React.useMemo(() => {
     return polylines.map(polyline => {
       const hasRealtimeData = finalMarkers.some(marker =>
         marker.unit_id === polyline.unitId && marker.isRealtime
       );
 
+      // Calculate progress for this route based on realtime marker data
+      let progress = 0;
+      if (hasRealtimeData) {
+        const realtimeMarker = finalMarkers.find(marker =>
+          marker.unit_id === polyline.unitId && marker.isRealtime
+        );
+        
+        if (realtimeMarker && realtimeMarker.routeProgress !== undefined) {
+          // Use backend-provided progress if available
+          progress = Math.max(0, Math.min(1, realtimeMarker.routeProgress));
+        } else {
+          // Calculate approximate progress based on position if no backend progress
+          // This is a fallback calculation
+          progress = calculateApproximateProgress(
+            polyline.positions, 
+            realtimeMarker ? [realtimeMarker.latitude, realtimeMarker.longitude] : null
+          );
+        }
+      }
+
       return {
         ...polyline,
         routeId: `route-${polyline.unitId}-${polyline.emergencyId}`,
         isAnimated: animateRoutes,
         isRealtime: hasRealtimeData,
-        progress: polyline.progress || 0,
+        progress: progress, // NEW: Progress percentage (0-1)
         pathOptions: {
           color: hasRealtimeData ? polyline.color : '#6c757d',
           weight: hasRealtimeData ? 6 : 4,
@@ -573,6 +635,12 @@ function MapView({
             100% { box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
           }
           
+          @keyframes unitMovePulse {
+            0% { transform: scale(1); box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+            50% { transform: scale(1.1); box-shadow: 0 6px 12px rgba(0,0,0,0.5); }
+            100% { transform: scale(1); box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+          }
+          
           .enhanced-unit-icon {
             background: none !important;
             border: none !important;
@@ -607,10 +675,19 @@ function MapView({
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {finalMarkers.map((m, i) => {
-          // Enhanced popup content for units
+        {/* Show regular unit markers based on toggle - hide during route simulation unless specifically enabled */}
+        {(!polylines || polylines.length === 0 || showUnitMarkers) ? finalMarkers.map((m, i) => {
+          // Filter out unit markers if showUnitMarkers is false (during route simulation)
           const isUnit = m.unit_id !== undefined;
           const isEmergency = m.request_id !== undefined && !isUnit;
+          
+          // During route simulation (polylines exist), hide regular unit markers unless showUnitMarkers is true
+          if ((polylines && polylines.length > 0) && isUnit && !showUnitMarkers) {
+            return null;
+          }
+          
+          // Always show emergency markers
+          // Enhanced popup content for units
           const popupContent = isUnit ? (
             <div>
               <strong> Unit {m.unit_id}</strong><br/>
@@ -694,22 +771,22 @@ function MapView({
               </Popup>
             </Marker>
           );
-        })}
+        }) : null}
         
-        {/* Enhanced animated polylines with source/destination markers */}
+        {/* Route polylines with start/end markers for dashboard view */}
         {enhancedPolylines.map((pl, idx) => (
           <React.Fragment key={pl.id || idx}>
-            {/* Source marker (unit starting position) */}
+            {/* Start marker (unit starting position) - shown in dashboard */}
             <Marker
               position={pl.positions[0]}
               icon={L.divIcon({
-                className: "source-marker",
+                className: "start-marker-dashboard",
                 html: `
                   <div style="
                     position: relative;
                     width: 24px;
                     height: 24px;
-                    background: ${pl.isRealtime ? '#007bff' : '#6c757d'};
+                    background: #28a745;
                     border: 3px solid white;
                     border-radius: 50%;
                     display: flex;
@@ -719,54 +796,54 @@ function MapView({
                     color: white;
                     font-weight: bold;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-                    ${pl.isRealtime ? 'animation: sourcePulse 2s infinite;' : ''}
+                    animation: startPulse 2s infinite;
                   ">
-                    📍
+                    🚩 START
                   </div>
                 `,
                 iconSize: [24, 24],
                 iconAnchor: [12, 12],
               })}
-              zIndexOffset={pl.isRealtime ? 800 : 400}
+              zIndexOffset={800}
             >
               <Popup>
                 <div>
-                  <strong>🚩 Source Location</strong><br/>
-                  Unit {pl.unitId} Starting Point<br/>
+                  <strong>🚩 Starting Point</strong><br/>
+                  Unit {pl.unitId} Departure<br/>
                   <small>Service: {pl.serviceType}</small>
                 </div>
               </Popup>
             </Marker>
             
-            {/* Destination marker (emergency location) */}
+            {/* End marker (emergency location) - shown in dashboard */}
             <Marker
               position={pl.positions[pl.positions.length - 1]}
               icon={L.divIcon({
-                className: "destination-marker",
+                className: "end-marker-dashboard",
                 html: `
                   <div style="
                     position: relative;
-                    width: 28px;
-                    height: 28px;
+                    width: 24px;
+                    height: 24px;
                     background: #dc3545;
                     border: 3px solid white;
                     border-radius: 50%;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 14px;
+                    font-size: 12px;
                     color: white;
                     font-weight: bold;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-                    ${pl.isRealtime ? 'animation: destinationPulse 2s infinite;' : ''}
+                    animation: endPulse 2s infinite;
                   ">
-                    🎯
+                    🎯 END
                   </div>
                 `,
-                iconSize: [28, 28],
-                iconAnchor: [14, 14],
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
               })}
-              zIndexOffset={pl.isRealtime ? 800 : 400}
+              zIndexOffset={800}
             >
               <Popup>
                 <div>
@@ -780,52 +857,14 @@ function MapView({
             <AnimatedPolyline
               positions={pl.positions}
               color={pl.color || "#0066ff"}
-              progress={pl.progress || 1}
-              showProgress={animateRoutes}
               isAnimated={pl.isAnimated && animateRoutes}
               pathOptions={pl.pathOptions}
               isRealtime={pl.isRealtime}
               serviceType={pl.serviceType}
               unitId={pl.unitId}
               routeId={pl.routeId}
+              progress={pl.progress || 0}
             />
-            {animateRoutes && pl.progress < 1 && pl.positions.length > 0 && (
-              <RouteProgressIndicator 
-                progress={pl.progress || 0}
-                position={pl.positions[Math.floor((pl.positions.length - 1) * (pl.progress || 0))]}
-              />
-            )}
-            {/* Add route information overlay */}
-            {pl.isRealtime && (
-              <Marker
-                position={pl.positions[Math.floor((pl.positions.length - 1) * (pl.progress || 0))]}
-                icon={L.divIcon({
-                  className: "route-info-overlay",
-                  html: `
-                    <div style="
-                      position: absolute;
-                      top: -40px;
-                      left: 50%;
-                      transform: translateX(-50%);
-                      background: rgba(0, 0, 0, 0.9);
-                      color: white;
-                      padding: 4px 8px;
-                      border-radius: 8px;
-                      font-size: 10px;
-                      white-space: nowrap;
-                      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-                      border: 1px solid #007bff;
-                    ">
-                      🔴 Unit ${pl.unitId} → Emergency #${pl.emergencyId}
-                      ${pl.progress ? `<br/><small>Progress: ${Math.round(pl.progress * 100)}%</small>` : ''}
-                    </div>
-                  `,
-                  iconSize: [100, 30],
-                  iconAnchor: [50, 15],
-                })}
-                zIndexOffset={1000}
-              />
-            )}
           </React.Fragment>
         ))}
         

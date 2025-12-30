@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -47,6 +47,12 @@ function LocationPicker({ value, onChange }) {
 }
 
 const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
+  // Constants
+  const VEHICLE_NUMBER_MIN_LENGTH = 3;
+  const VEHICLE_NUMBER_MAX_LENGTH = 15;
+  const DEFAULT_MAP_CENTER = [19.076, 72.8777]; // Mumbai coordinates
+  const DEFAULT_MAP_ZOOM = 12;
+
   const [formData, setFormData] = useState({
     unit_vehicle_number: "",
     service_type: "",
@@ -60,52 +66,75 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
   const [locating, setLocating] = useState(false);
 
   const serviceTypes = [
-    { value: "Ambulance", label: "🚑 Ambulance", color: "#dc3545" },
-    { value: "Fire", label: "🚒 Fire Truck", color: "#fd7e14" },
-    { value: "Police", label: "👮 Police", color: "#0d6efd" }
+    { value: "AMBULANCE", label: "🚑 Ambulance", color: "#dc3545" },
+    { value: "FIRE_TRUCK", label: "🚒 Fire Truck", color: "#fd7e14" },
+    { value: "POLICE", label: "👮 Police", color: "#0d6efd" }
   ];
 
   // Calculate map center: use selected position if available, otherwise use default
-  const defaultCenter = [19.076, 72.8777]; // Mumbai coordinates
-  const mapCenter = selectedLocation ? [selectedLocation.latitude, selectedLocation.longitude] : defaultCenter;
-  const mapZoom = 12;
+  const mapCenter = selectedLocation ? [selectedLocation.latitude, selectedLocation.longitude] : DEFAULT_MAP_CENTER;
+  const mapZoom = DEFAULT_MAP_ZOOM;
 
-  const handleInputChange = (e) => {
+  const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
-    
+
     // Clear error when user starts typing
     if (error) setError(null);
-  };
+  }, [error]);
 
   const validateForm = () => {
     if (!formData.unit_vehicle_number.trim()) {
-      setError("Vehicle number is required");
+      const errorMsg = "Vehicle number is required";
+      setError(errorMsg);
+      if (window.showErrorToast) {
+        window.showErrorToast("Validation Error", {
+          description: errorMsg
+        });
+      }
       return false;
     }
-    
-    if (formData.unit_vehicle_number.length < 3 || formData.unit_vehicle_number.length > 15) {
-      setError("Vehicle number must be between 3 and 15 characters");
+
+    if (formData.unit_vehicle_number.length < VEHICLE_NUMBER_MIN_LENGTH || formData.unit_vehicle_number.length > VEHICLE_NUMBER_MAX_LENGTH) {
+      const errorMsg = `Vehicle number must be between ${VEHICLE_NUMBER_MIN_LENGTH} and ${VEHICLE_NUMBER_MAX_LENGTH} characters`;
+      setError(errorMsg);
+      if (window.showErrorToast) {
+        window.showErrorToast("Invalid Vehicle Number", {
+          description: errorMsg
+        });
+      }
       return false;
     }
-    
+
     if (!formData.service_type) {
-      setError("Service type is required");
+      const errorMsg = "Service type is required";
+      setError(errorMsg);
+      if (window.showErrorToast) {
+        window.showErrorToast("Service Type Required", {
+          description: errorMsg
+        });
+      }
       return false;
     }
-    
+
     if (!formData.latitude || !formData.longitude) {
-      setError("Location must be selected from the map");
+      const errorMsg = "Location must be selected from the map";
+      setError(errorMsg);
+      if (window.showErrorToast) {
+        window.showErrorToast("Location Required", {
+          description: errorMsg
+        });
+      }
       return false;
     }
-    
+
     return true;
   };
 
-  const handleUseMyLocation = () => {
+  const handleUseMyLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setError("Geolocation not supported in this browser.");
       window.showErrorToast("Geolocation not supported", {
@@ -121,24 +150,24 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
       (pos) => {
         const { latitude, longitude } = pos.coords;
         const locationData = { latitude, longitude };
-        
+
         setSelectedLocation(locationData);
         setFormData(prev => ({
           ...prev,
           latitude: latitude,
           longitude: longitude
         }));
-        
+
         window.showSuccessToast("Location detected", {
           description: "Your current location has been selected."
         });
-        
+
         setLocating(false);
       },
       (err) => {
         console.error("Geolocation error:", err);
         let errorMessage = "Unable to fetch your location. ";
-        
+
         switch (err.code) {
           case err.PERMISSION_DENIED:
             errorMessage += "Please allow location access or pick manually on the map.";
@@ -153,47 +182,20 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
             errorMessage += "Please allow permission or pick manually on the map.";
             break;
         }
-        
+
         setError(errorMessage);
         window.showErrorToast("Location access denied", {
           description: errorMessage
         });
         setLocating(false);
       },
-      { 
-        enableHighAccuracy: true, 
-        timeout: 10000, 
-        maximumAge: 60000 
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
       }
     );
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await unitAPI.createUnit(formData);
-      
-      if (response.data) {
-        setSuccess(true);
-        setTimeout(() => {
-          onUnitAdded && onUnitAdded(response.data.unit);
-          handleClose();
-        }, 1500);
-      }
-    } catch (err) {
-      console.error("Error creating unit:", err);
-      const errorMessage = err.response?.data?.error || "Failed to create unit";
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, []);
 
   const handleClose = () => {
     setFormData({
@@ -206,6 +208,66 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
     setError(null);
     setSuccess(false);
     onClose && onClose();
+  };
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+
+    if (!validateForm()) return;
+
+    setLoading(true);
+    setError(null);
+
+    if (window.showToast) {
+      window.showToast({
+        message: 'Creating unit...',
+        description: `Adding ${formData.unit_vehicle_number} to the system`,
+        type: 'info',
+        duration: 2000
+      });
+    }
+
+    try {
+      const response = await unitAPI.createUnit(formData);
+
+      if (response.data) {
+        setSuccess(true);
+
+        if (window.showSuccessToast) {
+          window.showSuccessToast('Unit created successfully', {
+            description: `${formData.unit_vehicle_number} has been added to the system and is ready for dispatch`
+          });
+        }
+
+        setTimeout(() => {
+          onUnitAdded && onUnitAdded(response.data.unit);
+          handleClose();
+        }, 1500);
+      }
+    } catch (err) {
+      console.error("Error creating unit:", err);
+      const errorMessage = err.response?.data?.error || "Failed to create unit";
+      setError(errorMessage);
+
+      if (window.showErrorToast) {
+        window.showErrorToast('Failed to create unit', {
+          description: errorMessage
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [formData, onUnitAdded, validateForm, handleClose]);
+
+  const handleOpen = () => {
+    if (window.showToast) {
+      window.showToast({
+        message: '🚛 Add New Unit',
+        description: 'Fill in the details to add a new emergency response unit',
+        type: 'info',
+        duration: 3000
+      });
+    }
   };
 
   if (!isOpen) return null;
@@ -221,16 +283,16 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1100
     }}>
       <div className="modal-content" style={{
         backgroundColor: 'var(--bg-primary)',
         borderRadius: 'var(--radius-xl)',
-        padding: 'var(--space-6)',
-        width: '90%',
-        maxWidth: '800px',
-        maxHeight: '90vh',
-        overflowY: 'auto',
+        padding: 'var(--space-4)',
+      width: '85%',
+      maxWidth: '700px',
+      height: '90vh',
+      overflow: 'hidden',
         boxShadow: 'var(--shadow-xl)',
         border: '1px solid var(--gray-200)'
       }}>
@@ -241,7 +303,7 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
           alignItems: 'center',
           marginBottom: 'var(--space-6)',
           borderBottom: '1px solid var(--gray-200)',
-          paddingBottom: 'var(--space-4)'
+          paddingBottom: 'var(--space-2)'
         }}>
           <div>
             <h2 style={{
@@ -299,7 +361,7 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
+            <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
               
               {/* Vehicle Number Input */}
               <div>
@@ -373,7 +435,17 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
                         name="service_type"
                         value={service.value}
                         checked={formData.service_type === service.value}
-                        onChange={handleInputChange}
+                        onChange={(e) => {
+                          handleInputChange(e);
+                          if (window.showToast) {
+                            window.showToast({
+                              message: `${service.label.split(' ')[0]} Service Selected`,
+                              description: `Set to ${service.label.substring(2)}`,
+                              type: 'info',
+                              duration: 1500
+                            });
+                          }
+                        }}
                         style={{ display: 'none' }}
                       />
                       <span style={{
@@ -476,6 +548,15 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
                           longitude: null
                         }));
                         setError(null);
+                        
+                        if (window.showToast) {
+                          window.showToast({
+                            message: '📍 Location cleared',
+                            description: 'Location has been removed, please select a new location',
+                            type: 'info',
+                            duration: 2000
+                          });
+                        }
                       }}
                       style={{
                         padding: 'var(--space-3) var(--space-4)',
@@ -517,7 +598,7 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
                 </div>
                 
                 <div style={{
-                  height: '300px',
+                  height: '250px',
                   border: '2px solid var(--gray-200)',
                   borderRadius: 'var(--radius-lg)',
                   overflow: 'hidden',
@@ -543,6 +624,15 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
                           latitude: lat,
                           longitude: lng
                         }));
+                        
+                        if (window.showToast) {
+                          window.showToast({
+                            message: '📍 Location selected',
+                            description: `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+                            type: 'info',
+                            duration: 2000
+                          });
+                        }
                       }} 
                     />
                   </MapContainer>

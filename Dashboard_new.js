@@ -192,8 +192,12 @@ function Dashboard() {
 
   const handleDispatch = async (emergency) => {
     try {
+      // Find the assigned unit to get vehicle number
+      const assignedUnit = units.find(unit => unit.unit_id === emergency.assigned_unit);
+      const vehicleNumber = assignedUnit?.unit_vehicle_number || `Unit ${emergency.assigned_unit}`;
+      
       await api.post(`/authority/dispatch/${emergency.request_id}`);
-      showToast("Emergency approved & dispatched", "success");
+      showToast(`Unit ${vehicleNumber} is dispatched`, "success");
       await fetchData();
     } catch (err) {
       console.error("Dispatch error:", err);
@@ -207,7 +211,7 @@ function Dashboard() {
   const handleComplete = async (emergency) => {
     try {
       await api.post(`/authority/complete/${emergency.request_id}`);
-      showToast("Marked complete; unit is now available", "success");
+      showToast("Mark as done", "success");
       await fetchData();
     } catch (err) {
       console.error("Complete error:", err);

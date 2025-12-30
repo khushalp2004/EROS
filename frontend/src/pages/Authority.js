@@ -6,9 +6,11 @@ import DeleteUnit from "../components/DeleteUnit";
 import EmergencyList from "../components/EmergencyList";
 import NotificationPanel from "../components/NotificationPanel";
 import { useNotifications } from "../hooks/useNotifications";
+import { useAuth } from "../hooks/useAuth";
 
 const Authority = () => {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const [emergencies, setEmergencies] = useState([]);
   const [units, setUnits] = useState([]);
   const [showAddUnit, setShowAddUnit] = useState(false);
@@ -25,6 +27,9 @@ const Authority = () => {
   });
 
   const { notifications, unreadCount, markAsRead } = useNotifications();
+
+  // Only show notifications for authority users
+  const shouldShowNotifications = isAuthenticated && user?.role === 'authority';
 
   useEffect(() => {
     fetchData();
@@ -352,8 +357,8 @@ const Authority = () => {
         />
       </div>
 
-      {/* Notification Panel */}
-      {notifications.length > 0 && (
+      {/* Notification Panel - Only show for admin users */}
+      {shouldShowNotifications && notifications.length > 0 && (
         <div className="container" style={{ margin: 'var(--space-6) auto', maxWidth: '1200px' }}>
           <NotificationPanel 
             notifications={notifications}

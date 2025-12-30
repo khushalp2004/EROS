@@ -183,10 +183,13 @@ def dispatch_emergency(emergency_id):
         return jsonify({"error": f"Emergency already {emergency.status}"}), 400
 
     # Get available units of same service type
+    # Note: emergency.emergency_type should now be in uppercase format
     units = Unit.query.filter_by(
         service_type=emergency.emergency_type,
         status="AVAILABLE"
     ).all()
+    
+    print(f"🚨 Dispatch attempt for Emergency #{emergency.request_id} (Type: {emergency.emergency_type}) - Found {len(units)} available units")
 
     if not units:
         return jsonify({"error": "No available units"}), 404

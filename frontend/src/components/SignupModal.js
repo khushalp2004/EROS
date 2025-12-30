@@ -10,7 +10,7 @@ export default function SignupModal({ isOpen, onClose }) {
     lastName: '',
     phone: '',
     organization: '',
-    role: 'admin'
+    role: 'authority'
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -491,7 +491,7 @@ export default function SignupModal({ isOpen, onClose }) {
                     aria-label={showPassword ? "Hide password" : "Show password"}
                     title={showPassword ? "Hide password" : "Show password"}
                   >
-                    {showPassword ? '👁️‍🗨️' : '👁️'}
+                    {showPassword ? 'Hide' : 'Show'}
                   </button>
                 </div>
               </div>
@@ -552,7 +552,7 @@ export default function SignupModal({ isOpen, onClose }) {
                     aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                     title={showConfirmPassword ? "Hide password" : "Show password"}
                   >
-                    {showConfirmPassword ? '👁️‍🗨️' : '👁️'}
+                    {showConfirmPassword ? 'Hide' : 'Show'}
                   </button>
                 </div>
               </div>

@@ -18,13 +18,36 @@ export const NotificationProvider = ({ children, userId = null }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [preferences, setPreferences] = useState(null);
   const [socket, setSocket] = useState(null);
+  const [user, setUser] = useState(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize WebSocket connection
+  // Get user info for role-based notification logic
   useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+  }, []);
+
+  // Check if user should receive notifications based on role
+  const shouldReceiveNotifications = user && (user.role === 'admin' || user.role === 'authority');
+
+    // Initialize WebSocket connection - for admin and authority users
+  useEffect(() => {
+    // Only initialize WebSocket for admin and authority users
+    if (!shouldReceiveNotifications || !userId || isInitialized) {
+      return;
+    }
+
     const newSocket = io('http://localhost:5001');
     
     newSocket.on('connect', () => {
       setIsConnected(true);
+      setIsInitialized(true);
     });
 
     newSocket.on('disconnect', () => {
@@ -32,32 +55,37 @@ export const NotificationProvider = ({ children, userId = null }) => {
     });
 
     newSocket.on('notification', (notification) => {
-      setNotifications(prev => [notification, ...prev]);
-      setUnreadCount(prev => prev + 1);
-      
-      // Show toast notification if enabled in preferences
-      if (preferences?.in_app_notifications !== false) {
-        showToastNotification(notification);
+      // Only process notifications if user is admin
+      if (shouldReceiveNotifications) {
+        setNotifications(prev => [notification, ...prev]);
+        setUnreadCount(prev => prev + 1);
+        
+        // Show toast notification if enabled in preferences
+        if (preferences?.in_app_notifications !== false) {
+          showToastNotification(notification);
+        }
       }
     });
 
     newSocket.on('notification_updated', (update) => {
-      setNotifications(prev => 
-        prev.map(n => 
-          n.id === update.notification_id 
-            ? { ...n, ...update }
-            : n
-        )
-      );
-      
-      // Update unread count if notification was marked as read
-      if (update.is_read && !update.is_dismissed) {
-        setUnreadCount(prev => Math.max(0, prev - 1));
+      if (shouldReceiveNotifications) {
+        setNotifications(prev => 
+          prev.map(n => 
+            n.id === update.notification_id 
+              ? { ...n, ...update }
+              : n
+          )
+        );
+        
+        // Update unread count if notification was marked as read
+        if (update.is_read && !update.is_dismissed) {
+          setUnreadCount(prev => Math.max(0, prev - 1));
+        }
       }
     });
 
     newSocket.on('all_notifications_read', ({ user_id }) => {
-      if (user_id === userId || userId === null) {
+      if (shouldReceiveNotifications && (user_id === userId || userId === null)) {
         setUnreadCount(0);
         setNotifications(prev => 
           prev.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() }))
@@ -70,17 +98,27 @@ export const NotificationProvider = ({ children, userId = null }) => {
     return () => {
       newSocket.close();
     };
-  }, [userId, preferences]);
+  }, [userId, preferences, shouldReceiveNotifications, isInitialized]);
 
-  // Load initial notifications and preferences
+  // Load initial notifications and preferences - for admin and authority users
   useEffect(() => {
-    if (userId) {
+    if (userId && shouldReceiveNotifications) {
       loadNotifications();
       loadPreferences();
+    } else if (!shouldReceiveNotifications) {
+      // Reset state for non-admin users
+      setNotifications([]);
+      setUnreadCount(0);
+      setIsConnected(false);
+      setPreferences(null);
     }
-  }, [userId]);
+  }, [userId, shouldReceiveNotifications]);
 
   const loadNotifications = async (status = 'all', limit = 50) => {
+    if (!shouldReceiveNotifications) {
+      return;
+    }
+    
     try {
       const response = await api.get('/notifications', {
         params: { user_id: userId, status, limit }
@@ -96,6 +134,10 @@ export const NotificationProvider = ({ children, userId = null }) => {
   };
 
   const loadPreferences = async () => {
+    if (!shouldReceiveNotifications) {
+      return;
+    }
+    
     try {
       const response = await api.get('/notifications/preferences', {
         params: { user_id: userId }
@@ -148,8 +190,13 @@ export const NotificationProvider = ({ children, userId = null }) => {
     }
   };
 
-  // Toast notification function
+  // Toast notification function - Show for admin and authority users
   const showToastNotification = (notification) => {
+    // Safety check: Only show toast notifications for admin and authority users (not reporters)
+    if (!user || (user.role !== 'admin' && user.role !== 'authority')) {
+      return;
+    }
+    
     const toast = {
       id: notification.id,
       title: notification.title,

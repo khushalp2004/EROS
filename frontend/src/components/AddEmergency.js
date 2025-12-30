@@ -9,6 +9,8 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import api from "../api";
+import { useAuth } from "../hooks/useAuth";
+import EmergencyReportedPopup from "./EmergencyReportedPopup";
 import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -47,11 +49,13 @@ function LocationPicker({ value, onChange }) {
 }
 
 function AddEmergency() {
+  const { user } = useAuth();
   const [type, setType] = useState("Ambulance");
   const [position, setPosition] = useState(null); // [lat, lng]
   const [message, setMessage] = useState("");
   const [locating, setLocating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showEmergencyPopup, setShowEmergencyPopup] = useState(false);
 
   // Calculate map center: use selected position if available, otherwise use default
   const defaultCenter = [19.076, 72.8777]; // Mumbai coordinates
@@ -81,10 +85,16 @@ function AddEmergency() {
       setPosition(null);
       setType("Ambulance");
       
-      // Show success toast
-      window.showSuccessToast("Emergency reported successfully!", {
-        description: "Our emergency response team has been notified and will respond promptly."
-      });
+      // Show different success feedback based on user role
+      if (!user || user.role === 'reporter') {
+        // Show popup for reporter users
+        setShowEmergencyPopup(true);
+      } else {
+        // Show success toast for admin/authority users
+        window.showSuccessToast("Emergency reported successfully!", {
+          description: "Our emergency response team has been notified and will respond promptly."
+        });
+      }
       
     } catch (err) {
       console.error("AXIOS ERROR:", err);
@@ -138,14 +148,14 @@ function AddEmergency() {
   };
 
   return (
-    <div style={{ padding: "var(--space-6)", backgroundColor: "var(--bg-secondary)", minHeight: "calc(100vh - 200px)" }}>
-      {/* Page Header */}
-      <div className="page-header">
-        <div className="container">
-          <h1 className="page-title">
+    <div style={{ padding: "var(--space-)", backgroundColor: "var(--bg-secondary)", minHeight: "calc(100vh - 200px)" }}>
+      {/* Header */}
+      <div className="dashboard-header">
+        <div className="dashboard-header-content">
+          <h1 className="dashboard-title">
             🚨 Report Emergency
           </h1>
-          <p className="page-subtitle">
+          <p className="dashboard-subtitle">
             Quickly report an emergency and get immediate assistance from our response team
           </p>
         </div>
@@ -333,6 +343,13 @@ function AddEmergency() {
           </div>
         )}
       </div>
+
+      {/* Emergency Reported Popup - Only for reporter users */}
+      <EmergencyReportedPopup
+        message="Your emergency has been successfully reported to the authorities."
+        isVisible={showEmergencyPopup}
+        onClose={() => setShowEmergencyPopup(false)}
+      />
     </div>
   );
 }

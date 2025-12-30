@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNotifications } from '../hooks/useNotifications';
+import { useAuth } from '../hooks/useAuth';
 
 const NotificationPanel = ({ isOpen, onClose }) => {
+  const { user, isAuthenticated } = useAuth();
   const { 
     notifications, 
     unreadCount, 
@@ -58,6 +60,13 @@ const NotificationPanel = ({ isOpen, onClose }) => {
       document.body.style.overflow = 'unset';
     };
   }, [isOpen]);
+
+  // Safety check: Only show panel for authority users (after all hooks)
+  const shouldShowPanel = isAuthenticated && user?.role === 'authority';
+  
+  if (!shouldShowPanel) {
+    return null;
+  }
 
   if (!isOpen) return null;
 

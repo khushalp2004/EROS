@@ -5,6 +5,16 @@
   animation: dash 2s linear forwards;
 }
 
+/* General spinner animation for loading states */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes dash {
   to {
     stroke-dashoffset: 0;
@@ -82,25 +92,7 @@
   }
 }
 
-/* Route progress indicator */
-.progress-indicator {
-  animation: progressPulse 1.5s ease-in-out infinite;
-}
 
-@keyframes progressPulse {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
 
 /* Real-time connection indicator */
 .realtime-connected {
@@ -169,18 +161,7 @@
   stroke-linecap: round;
 }
 
-/* Route Progress Animation */
-.route-progress-line {
-  stroke-dasharray: 1000;
-  stroke-dashoffset: 1000;
-  animation: routeProgressDraw 4s ease-in-out forwards;
-}
 
-@keyframes routeProgressDraw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
 
 /* Service Emoji Pulse */
 .service-emoji-pulse {

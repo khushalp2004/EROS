@@ -137,8 +137,8 @@ export const authAPI = {
   forgotPassword: (email) => api.post('/api/auth/forgot-password', { email }),
   
   // Reset password
-  resetPassword: (token, newPassword) => 
-    api.post('/api/auth/reset-password', { token, password: newPassword }),
+  resetPassword: (token, data) => 
+    api.post('/api/auth/reset-password', { token, ...data }),
   
   // Health check
   health: () => api.get('/api/auth/health'),

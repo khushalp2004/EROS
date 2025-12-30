@@ -1,8 +1,19 @@
 import React from 'react';
 import { useNotifications } from '../hooks/useNotifications';
+import { useAuth } from '../hooks/useAuth';
 
 const NotificationBadge = ({ className = '', showText = false, onClick }) => {
   const { unreadCount, isConnected } = useNotifications();
+  const { user, isAuthenticated } = useAuth();
+
+  // Role-based visibility: Show for admin and authority users
+  // Reporter users should not see any notification bell
+  const shouldShowBadge = isAuthenticated && (user?.role === 'admin' || user?.role === 'authority');
+
+  // Don't render anything for reporter users
+  if (!shouldShowBadge) {
+    return null;
+  }
 
   return (
     <div 
