@@ -10,9 +10,30 @@ from extensions import limiter
 
 from utils.validators import validate_required_fields, validate_email, validate_password_strength
 import os
+import threading
 
 # Create blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
+
+
+def _send_signup_emails_async(app, user_id):
+    """Send signup emails in background so signup response is fast."""
+    try:
+        with app.app_context():
+            user = User.query.get(user_id)
+            if not user:
+                return
+
+            from services.email_service import email_service
+
+            verification_token = user.verification_token
+            email_success, email_message = email_service.send_verification_email(user, verification_token)
+            print(f"[Async] Verification email sent: {email_success} - {email_message}")
+
+            admin_email_success, admin_message = email_service.send_admin_new_user_notification(user)
+            print(f"[Async] Admin notification sent: {admin_email_success} - {admin_message}")
+    except Exception as exc:
+        print(f"[Async] Signup email error: {exc}")
 
 @auth_bp.route('/signup', methods=['POST'])
 @limiter.limit("5 per minute")
@@ -91,26 +112,21 @@ def signup():
         )
         
         if success:
-            # Send verification email
-            verification_token = user.verification_token
-            # Import email service
-            from services.email_service import email_service
-            
-            email_success, email_message = email_service.send_verification_email(user, verification_token)
-            print(f"Verification email sent: {email_success} - {email_message}")
-
-            # Send admin notification
-            admin_email_success, admin_message = email_service.send_admin_new_user_notification(user)
-            print(f"Admin notification sent: {admin_email_success} - {admin_message}")
+            app_obj = current_app._get_current_object()
+            threading.Thread(
+                target=_send_signup_emails_async,
+                args=(app_obj, user.id),
+                daemon=True
+            ).start()
 
             return jsonify({
                 'success': True,
                 'message': message,
                 'user_id': user.id,
-                'email_sent': email_success,
-                'verification_email_message': email_message,
-                'admin_notified': admin_email_success,
-                'admin_notification_message': admin_message
+                'email_queued': True,
+                'verification_email_message': 'Verification email is being sent.',
+                'admin_notified': True,
+                'admin_notification_message': 'Admin notification is being sent.'
             }), 201
         else:
             return jsonify({
