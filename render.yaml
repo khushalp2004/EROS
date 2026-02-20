@@ -22,21 +22,18 @@ services:
       - key: RATELIMIT_STORAGE_URI
         value: memory://
 
-  - type: static_site
+  - type: web
     name: eros-frontend
+    runtime: node
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: build
-    pullRequestPreviewsEnabled: false
+    startCommand: npx serve -s build -l $PORT
+    plan: free
     envVars:
       - key: REACT_APP_API_BASE_URL
         value: https://eros-backend.onrender.com
       - key: REACT_APP_SOCKET_URL
         value: https://eros-backend.onrender.com
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
 
 databases:
   - name: eros-postgres
