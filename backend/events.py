@@ -342,11 +342,22 @@ def simulate_unit_movement(app=None):
 simulation_thread = None
 simulation_running = False
 
+def _parse_frontend_origins():
+    configured = (os.getenv("FRONTEND_ORIGINS") or "").strip()
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://localhost:3001",
+    ]
+
 def init_websocket(app):
     """Initialize WebSocket with the Flask app"""
     global simulation_thread, simulation_running
     socketio.init_app(app,
-        cors_allowed_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://localhost:3001"],
+        cors_allowed_origins=_parse_frontend_origins(),
         cors_credentials=False,
         allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRFToken"]
     )

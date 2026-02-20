@@ -67,10 +67,21 @@ from events import socketio, init_websocket
 
 app = Flask(__name__)
 
-# Enhanced CORS configuration for development
+def _parse_frontend_origins():
+    configured = (os.getenv("FRONTEND_ORIGINS") or "").strip()
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://localhost:3001",
+    ]
+
+# Enhanced CORS configuration for local + deployment
 CORS(
     app,
-    origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://localhost:3001"],
+    origins=_parse_frontend_origins(),
     supports_credentials=False,
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRFToken"]
