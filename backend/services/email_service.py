@@ -16,17 +16,12 @@ class EmailService:
         self.smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
         self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
         self.smtp_username = os.getenv('SMTP_USERNAME', '')
-        self.smtp_password = os.getenv('SMTP_PASSWORD', '')
-        self.from_email = os.getenv('FROM_EMAIL', 'patilkhushal54321@gmail.com')
+        self.smtp_password = os.getenv('SMTP_PASSWORD', '').replace(' ', '')
+        self.from_email = os.getenv('FROM_EMAIL', 'noreply@eros.local')
         self.from_name = os.getenv('FROM_NAME', 'EROS System')
-        self.admin_email = os.getenv('ADMIN_EMAIL', 'patilkhushal54321@gmail.com')
-        
-        # For development/demo purposes - you can set these in environment variables
-        # In production, use proper SMTP credentials
-        if not self.smtp_username:
-            self.smtp_username = 'patilkhushal54321@gmail.com'
-            self.smtp_password = 'jwrb tzfk gklm nzor'
-    
+        self.admin_email = os.getenv('ADMIN_EMAIL', '')
+        self.frontend_base_url = os.getenv('FRONTEND_BASE_URL', 'http://localhost:3000')
+
     def send_email(self, to_email, subject, html_content, text_content=None):
         """
         Send email using SMTP
@@ -41,6 +36,9 @@ class EmailService:
             tuple: (success: bool, message: str)
         """
         try:
+            if not self.smtp_username or not self.smtp_password:
+                return False, "SMTP credentials are not configured"
+
             # Create message
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
@@ -79,8 +77,7 @@ class EmailService:
             tuple: (success: bool, message: str)
         """
         try:
-            # Generate verification URL (hardcoded for development)
-            verification_url = f"http://localhost:3000/verify-email/{verification_token}"
+            verification_url = f"{self.frontend_base_url}/verify-email/{verification_token}"
             
             subject = "Verify Your Email - EROS System"
             
@@ -171,8 +168,7 @@ class EmailService:
             tuple: (success: bool, message: str)
         """
         try:
-            # Generate reset URL (hardcoded for development)
-            reset_url = f"http://localhost:3000/reset-password/{reset_token}"
+            reset_url = f"{self.frontend_base_url}/reset-password/{reset_token}"
             
             subject = "Password Reset - EROS System"
             
@@ -303,7 +299,7 @@ class EmailService:
                         <p>Please log into the admin panel to review this user request and approve if appropriate:</p>
                         
                         <div style="text-align: center; margin: 20px 0;">
-                            <a href="http://localhost:3000/login" class="button">🔑 Log into Admin System</a>
+                            <a href="{self.frontend_base_url}" class="button">🔑 Log into Admin System</a>
                         </div>
                         
                         <p><strong>Next Steps After Approval:</strong></p>
@@ -578,4 +574,3 @@ class EmailService:
 
 # Create a global instance
 email_service = EmailService()
-

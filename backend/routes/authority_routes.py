@@ -4,19 +4,54 @@ from models.unit import Unit
 from models.emergency import Emergency
 from models.location import RouteCalculation
 from models.user import User
+from models.emergency_reporter_contact import EmergencyReporterContact
 from models import db
 from datetime import datetime
 from config import OSRM_BASE_URL
 from routes.notification_routes import create_emergency_notification, create_unit_notification
 from events import socketio
+from services.sms_service import SMSService
 import requests
 import math
 import json
 import polyline
 import functools
+import os
+from itsdangerous import URLSafeTimedSerializer
+from config import SECRET_KEY
 
 # Max allowed route distance (50 km) for approval/dispatch
 MAX_DISTANCE_METERS = 50_000
+TRACKING_TOKEN_SALT = "public-emergency-tracking-v1"
+
+
+def _build_tracking_token(request_id):
+    serializer = URLSafeTimedSerializer(SECRET_KEY, salt=TRACKING_TOKEN_SALT)
+    return serializer.dumps({"request_id": int(request_id)})
+
+
+def _normalized_frontend_base_url():
+    base = (os.getenv('FRONTEND_BASE_URL') or '').strip() or 'http://127.0.0.1:3000'
+    if base.startswith('https://localhost') or base.startswith('https://127.0.0.1'):
+        base = base.replace('https://', 'http://', 1)
+    if 'localhost' in base:
+        base = base.replace('localhost', '127.0.0.1')
+    return base.rstrip('/')
+
+
+def _resolve_unit_driver(unit_id):
+    candidates = User.query.filter_by(role='unit').all()
+    for user in candidates:
+        org = (user.organization or "").strip()
+        if not org:
+            continue
+        normalized = org
+        if normalized.upper().startswith("UNIT_ID:"):
+            normalized = normalized.split(":", 1)[1].strip()
+        if normalized.isdigit() and int(normalized) == int(unit_id):
+            full_name = " ".join(part for part in [user.first_name, user.last_name] if part).strip() or user.email
+            return {"name": full_name, "phone": user.phone}
+    return None
 
 def authority_required():
     """
@@ -302,6 +337,24 @@ def dispatch_emergency(emergency_id):
     db.session.add(route_calc)
     db.session.commit()
 
+    # Reporter SMS: send tracking link only after assignment
+    sms_sent = False
+    sms_message = "No reporter phone for this emergency"
+    reporter_contact = EmergencyReporterContact.query.filter_by(emergency_id=emergency.request_id).first()
+    if reporter_contact and reporter_contact.reporter_phone:
+        tracking_token = _build_tracking_token(emergency.request_id)
+        tracking_url = f"{_normalized_frontend_base_url()}/track/{tracking_token}"
+        driver = _resolve_unit_driver(nearest_unit.unit_id)
+        sms_service = SMSService()
+        sms_sent, sms_message = sms_service.send_assigned_tracking_message(
+            to_phone=reporter_contact.reporter_phone,
+            request_id=emergency.request_id,
+            tracking_url=tracking_url,
+            unit_plate=nearest_unit.unit_vehicle_number,
+            driver_name=driver.get("name") if driver else None,
+            driver_phone=driver.get("phone") if driver else None
+        )
+
     # Send notifications
     create_emergency_notification(emergency, 'assigned')
     create_unit_notification(nearest_unit, 'dispatched', emergency=emergency)
@@ -401,7 +454,9 @@ def dispatch_emergency(emergency_id):
         "waypoint_count": waypoint_count,
         "route_positions": emergency_data['route_positions'],
         "route_calculation_id": route_calc.id,
-        "routing_source": "osrm_full_geometry" if waypoint_count > 0 else "euclidean_fallback"
+        "routing_source": "osrm_full_geometry" if waypoint_count > 0 else "euclidean_fallback",
+        "reporter_sms_sent": sms_sent,
+        "reporter_sms_message": sms_message
     })
 
 # -------------------------

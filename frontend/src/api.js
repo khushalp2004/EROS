@@ -1,7 +1,9 @@
 import axios from "axios";
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://127.0.0.1:5001";
+
 const api = axios.create({
-  baseURL: "http://127.0.0.1:5001",
+  baseURL: API_BASE_URL,
   headers: { "Content-Type": "application/json" },
   withCredentials: false
 });
@@ -96,6 +98,11 @@ export const unitAPI = {
   getActiveUnitRoutes: () => api.get('/api/active-unit-routes')
 };
 
+export const unitTaskAPI = {
+  getMyAssignedEmergency: () => api.get('/api/unit/me/emergency'),
+  completeMyEmergency: (emergencyId) => api.post(`/api/unit/me/complete/${emergencyId}`)
+};
+
 // Emergency API methods
 export const emergencyAPI = {
   // Get all emergencies
@@ -110,7 +117,11 @@ export const emergencyAPI = {
   
   // Assign unit to emergency
   assignUnit: (requestId, unitId) => 
-    api.post(`/api/emergencies/${requestId}/assign`, { unit_id: unitId })
+    api.post(`/api/emergencies/${requestId}/assign`, { unit_id: unitId }),
+
+  // Public tracking for non-auth reporters
+  getPublicTracking: (trackingToken) =>
+    api.get(`/api/public/emergencies/track/${trackingToken}`)
 };
 
 // Authentication API methods
@@ -170,4 +181,3 @@ export const authAPI = {
 };
 
 export default api;
-

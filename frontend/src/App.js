@@ -13,7 +13,10 @@ import EmailVerification from "./components/EmailVerification";
 import Dashboard from "./pages/Dashboard";
 import UnitsTracking from "./pages/UnitsTracking";
 import AdminDashboard from "./pages/AdminDashboard";
+import UnitDashboard from "./pages/UnitDashboard";
+import PublicEmergencyTracking from "./pages/PublicEmergencyTracking";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
+import UnitProtectedRoute from "./components/UnitProtectedRoute";
 import PendingApproval from "./pages/PendingApproval";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
@@ -105,6 +108,8 @@ function AppContent() {
               <Route path="/dashboard" element={<AuthorityProtectedRoute><Dashboard /></AuthorityProtectedRoute>} />
               <Route path="/units-tracking" element={<AuthorityProtectedRoute><UnitsTracking /></AuthorityProtectedRoute>} />
               <Route path="/admin" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
+              <Route path="/unit" element={<UnitProtectedRoute><UnitDashboard /></UnitProtectedRoute>} />
+              <Route path="/track/:token" element={<PublicEmergencyTracking />} />
             </Routes>
           </main>
 

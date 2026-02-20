@@ -52,10 +52,13 @@ function AddEmergency() {
   const { user } = useAuth();
   const [type, setType] = useState("Ambulance");
   const [position, setPosition] = useState(null); // [lat, lng]
+  const [reporterPhoneLocal, setReporterPhoneLocal] = useState("");
   const [message, setMessage] = useState("");
   const [locating, setLocating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showEmergencyPopup, setShowEmergencyPopup] = useState(false);
+  const [, setPublicTrackingUrl] = useState("");
+  const [smsStatus, setSmsStatus] = useState("");
 
   // Calculate map center: use selected position if available, otherwise use default
   const defaultCenter = [19.076, 72.8777]; // Mumbai coordinates
@@ -68,22 +71,39 @@ function AddEmergency() {
       setMessage("Please pick a location on the map.");
       return;
     }
+    if (!reporterPhoneLocal.trim()) {
+      setMessage("Please enter your phone number.");
+      return;
+    }
+    const reporterPhone = `+91${reporterPhoneLocal.trim()}`;
 
     setIsSubmitting(true);
     try {
-        const [lat, lng] = position;
+      const [lat, lng] = position;
       const res = await api.post("/api/emergencies", {
         emergency_type: type,
         latitude: lat,
         longitude: lng,
+        reporter_phone: reporterPhone,
       });
 
       console.log("Backend response:", res.data);
       setMessage("Emergency reported successfully! Authorities have been notified.");
+      setPublicTrackingUrl("");
+      const smsText = res.data?.sms_sent
+        ? "SMS sent."
+        : `SMS not sent: ${res.data?.sms_message || "Unknown error"}`;
+      setSmsStatus(smsText);
+      if (!res.data?.sms_sent && window.showWarningToast) {
+        window.showWarningToast("Tracking SMS not sent", {
+          description: res.data?.sms_message || "SMS provider is not configured."
+        });
+      }
       
       // Reset form
       setPosition(null);
       setType("Ambulance");
+      setReporterPhoneLocal("");
       
       // Show different success feedback based on user role
       if (!user || user.role === 'reporter') {
@@ -99,6 +119,8 @@ function AddEmergency() {
     } catch (err) {
       console.error("AXIOS ERROR:", err);
       setMessage("Failed to report emergency. Please try again.");
+      setPublicTrackingUrl("");
+      setSmsStatus("");
       window.showErrorToast("Failed to report emergency", {
         description: "Please check your connection and try again."
       });
@@ -191,6 +213,48 @@ function AddEmergency() {
               </select>
               <div className="form-help">
                 Select the type of emergency to ensure the right response team is dispatched
+              </div>
+            </div>
+
+            {/* Location Selection */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="reporter-phone">
+                📞 Your Phone Number
+              </label>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  type="text"
+                  className="form-control"
+                  value="+91"
+                  readOnly
+                  style={{
+                    width: "84px",
+                    fontSize: 'var(--text-base)',
+                    padding: 'var(--space-4)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '2px solid var(--gray-300)',
+                    backgroundColor: 'var(--gray-100)',
+                    fontWeight: 700
+                  }}
+                />
+                <input
+                  id="reporter-phone"
+                  type="tel"
+                  className="form-control"
+                  value={reporterPhoneLocal}
+                  onChange={(e) => setReporterPhoneLocal(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="Enter 10-digit mobile number"
+                  required
+                  style={{
+                    fontSize: 'var(--text-base)',
+                    padding: 'var(--space-4)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '2px solid var(--gray-300)'
+                  }}
+                />
+              </div>
+              <div className="form-help">
+                Dispatch team can call you for confirmation if needed.
               </div>
             </div>
 
@@ -340,6 +404,11 @@ function AddEmergency() {
             fontWeight: 'var(--font-medium)'
           }}>
             {message}
+            {smsStatus && (
+              <div style={{ marginTop: "8px", fontSize: "0.9rem", fontWeight: 500 }}>
+                {smsStatus}
+              </div>
+            )}
           </div>
         )}
       </div>

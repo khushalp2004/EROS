@@ -603,7 +603,7 @@ export default function SignupModal({ isOpen, onClose }) {
                   name="organization"
                   value={formData.organization}
                   onChange={handleInputChange}
-                  placeholder="Enter organization"
+                  placeholder={formData.role === 'unit' ? "UNIT_ID:<id> (e.g., UNIT_ID:7)" : "Enter organization"}
                   style={{
                     width: '100%',
                     padding: 'var(--space-3)',
@@ -615,6 +615,11 @@ export default function SignupModal({ isOpen, onClose }) {
                     boxSizing: 'border-box'
                   }}
                 />
+                {formData.role === 'unit' && (
+                  <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    For Unit role, enter linked unit in organization as <code>UNIT_ID:&lt;id&gt;</code>.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -645,6 +650,7 @@ export default function SignupModal({ isOpen, onClose }) {
               >
                 <option value="authority">Authority</option>
                 <option value="admin">Admin</option>
+                <option value="unit">Unit</option>
               </select>
             </div>
 

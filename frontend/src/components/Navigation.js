@@ -29,6 +29,11 @@ export default function Navigation() {
               <Link to="/admin" className={`nav-link ${currentLocation.pathname === '/admin' ? 'active' : ''}`}>Approvals</Link>
               <button onClick={handleLogout} className="nav-link logout-link">Logout</button>
             </>
+          ) : user?.role === 'unit' ? (
+            <>
+              <Link to="/unit" className={`nav-link ${currentLocation.pathname === '/unit' ? 'active' : ''}`}>Unit Task</Link>
+              <button onClick={handleLogout} className="nav-link logout-link">Logout</button>
+            </>
           ) : (
             <>
               <Link to="/" className={`nav-link ${currentLocation.pathname === '/' ? 'active' : ''}`}>Reporter</Link>

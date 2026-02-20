@@ -1,20 +1,25 @@
 import os
-import secrets
+from dotenv import load_dotenv
 
-# JWT Secret Key (use environment variable or fixed key for development)
-SECRET_KEY = os.getenv('JWT_SECRET_KEY') or 'dev-secret-key-change-in-production-2024'
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_BASE_DIR, ".env"))
 
-# Database Configuration
-SQLALCHEMY_DATABASE_URI = f'postgresql://postgres:khushalpatil29@db.pmiuqgtnztqnscvlldoj.supabase.co:5432/postgres'
+# Security
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
+
+# Database
+SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
+if not SQLALCHEMY_DATABASE_URI:
+    raise RuntimeError("DATABASE_URL is required. SQLite fallback is disabled.")
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-# Base URL for OSRM routing (change to your own OSRM host if self-hosted)
-OSRM_BASE_URL = "http://router.project-osrm.org"
+# Routing provider
+OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org")
 
-# Email Configuration (for development - using console backend)
-MAIL_SERVER = 'smtp.gmail.com'
-MAIL_PORT = 587
+# Email
+MAIL_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+MAIL_PORT = int(os.getenv("SMTP_PORT", "587"))
 MAIL_USE_TLS = True
-MAIL_USERNAME = os.getenv('MAIL_USERNAME', 'patilkhushal54321@gmail.com')
-MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', 'jwrb tzfk gklm nzor')
-MAIL_DEFAULT_SENDER = os.getenv('MAIL_USERNAME', 'patilkhushal54321@gmail.com')
+MAIL_USERNAME = os.getenv("SMTP_USERNAME", "")
+MAIL_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+MAIL_DEFAULT_SENDER = os.getenv("FROM_EMAIL", "")

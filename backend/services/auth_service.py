@@ -66,8 +66,9 @@ class AuthService:
             
         Returns:
             tuple: (status: str, message: str, user: User or None)
-                 status can be: 'success', 'pending_approval', 'not_verified', 
-                               'invalid_credentials', 'account_locked', 'account_deactivated'
+                 status can be: 'success', 'pending_approval', 'not_verified',
+                               'invalid_credentials', 'account_locked',
+                               'account_deactivated', 'auth_system_error'
         """
         try:
             # Find user by email
@@ -106,7 +107,7 @@ class AuthService:
             return 'success', "Login successful", user
             
         except Exception as e:
-            return 'invalid_credentials', f"Authentication failed: {str(e)}", None
+            return 'auth_system_error', f"Authentication failed: {str(e)}", None
     
     @staticmethod
     def generate_tokens(user):
@@ -424,4 +425,3 @@ class AuthService:
                 
         except Exception as e:
             return False, None, f"Token validation failed: {str(e)}"
-

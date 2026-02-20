@@ -146,6 +146,7 @@ function AdminDashboard() {
     switch (role) {
       case 'admin': return 'var(--primary-red)';
       case 'authority': return 'var(--primary-blue)';
+      case 'unit': return 'var(--status-enroute)';
       case 'reporter': return 'var(--primary-green)';
       default: return 'var(--gray-600)';
     }
@@ -496,6 +497,7 @@ function AdminDashboard() {
                     <option value="">All Roles</option>
                     <option value="admin">Admin</option>
                     <option value="authority">Authority</option>
+                    <option value="unit">Unit</option>
                   </select>
                   
                   <select

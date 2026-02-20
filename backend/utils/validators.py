@@ -126,7 +126,7 @@ def validate_role(role):
     Returns:
         bool: True if valid, False otherwise
     """
-    valid_roles = ['admin', 'authority', 'reporter']
+    valid_roles = ['admin', 'authority', 'reporter', 'unit']
     return role in valid_roles
 
 def validate_token(token):
@@ -273,4 +273,3 @@ def generate_secure_token(length=32):
     
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
-

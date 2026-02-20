@@ -6,6 +6,7 @@ from flask_jwt_extended import (
 from werkzeug.security import check_password_hash
 from models import db, User
 from services.auth_service import AuthService
+from extensions import limiter
 
 from utils.validators import validate_required_fields, validate_email, validate_password_strength
 import os
@@ -14,6 +15,7 @@ import os
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 @auth_bp.route('/signup', methods=['POST'])
+@limiter.limit("5 per minute")
 def signup():
     """
     Register a new user
@@ -74,10 +76,10 @@ def signup():
         }
         
         # Validate role
-        if role not in ['admin', 'authority', 'reporter']:
+        if role not in ['admin', 'authority', 'reporter', 'unit']:
             return jsonify({
                 'success': False,
-                'message': 'Invalid role. Must be admin, authority, or reporter'
+                'message': 'Invalid role. Must be admin, authority, reporter, or unit'
             }), 400
         
         # Register user
@@ -106,7 +108,9 @@ def signup():
                 'message': message,
                 'user_id': user.id,
                 'email_sent': email_success,
-                'admin_notified': admin_email_success
+                'verification_email_message': email_message,
+                'admin_notified': admin_email_success,
+                'admin_notification_message': admin_message
             }), 201
         else:
             return jsonify({
@@ -121,6 +125,7 @@ def signup():
         }), 500
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("10 per minute")
 def login():
     """
     Authenticate user and return tokens
@@ -172,6 +177,7 @@ def login():
         
         # Authenticate user
         status, message, user = AuthService.authenticate_user(email, password)
+        print(f"🔐 Login attempt: email={email}, status={status}")
         
         if status == 'success':
             # Generate tokens for approved users
@@ -226,7 +232,14 @@ def login():
                 'status': 'account_deactivated',
                 'message': message
             }), 403  # Forbidden status
-            
+
+        elif status == 'auth_system_error':
+            return jsonify({
+                'success': False,
+                'status': 'auth_system_error',
+                'message': message
+            }), 500
+
         else:  # invalid_credentials
             # For security, use generic message and 401 status
             return jsonify({
@@ -523,6 +536,7 @@ def resend_verification():
         }), 500
 
 @auth_bp.route('/resend-verification-unauth', methods=['POST'])
+@limiter.limit("5 per hour")
 def resend_verification_unauth():
     """
     Resend verification email to unauthenticated user by email
@@ -650,6 +664,7 @@ def change_password():
         }), 500
 
 @auth_bp.route('/forgot-password', methods=['POST'])
+@limiter.limit("3 per hour")
 def forgot_password():
     """
     Initiate password reset process
@@ -693,6 +708,7 @@ def forgot_password():
         }), 500
 
 @auth_bp.route('/reset-password', methods=['POST'])
+@limiter.limit("10 per hour")
 def reset_password():
     """
     Reset password using reset token
@@ -858,4 +874,3 @@ def handle_unauthorized(error):
         'message': 'Invalid or expired token',
         'error': 'UNAUTHORIZED'
     }), 401
-

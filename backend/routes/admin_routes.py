@@ -133,7 +133,7 @@ def get_all_users():
         
         # Apply filters
         if role:
-            if role not in ['admin', 'authority', 'reporter']:
+            if role not in ['admin', 'authority', 'reporter', 'unit']:
                 return jsonify({
                     'success': False,
                     'message': 'Invalid role filter'
@@ -470,7 +470,7 @@ def update_user_role(user_id):
         if not validate_role(new_role):
             return jsonify({
                 'success': False,
-                'message': 'Invalid role. Must be admin, authority, or reporter'
+                'message': 'Invalid role. Must be admin, authority, reporter, or unit'
             }), 400
         
         old_role = user.role
@@ -710,7 +710,7 @@ def get_admin_stats():
         
         # Users by role
         users_by_role = {}
-        for role in ['admin', 'authority', 'reporter']:
+        for role in ['admin', 'authority', 'reporter', 'unit']:
             users_by_role[role] = User.query.filter_by(role=role).count()
         
         # Recent registrations (last 30 days)
@@ -871,4 +871,3 @@ def handle_forbidden(error):
         'message': 'Admin access required',
         'error': 'ADMIN_REQUIRED'
     }), 403
-

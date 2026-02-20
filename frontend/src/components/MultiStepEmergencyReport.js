@@ -49,6 +49,7 @@ function MultiStepEmergencyReport() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
+  const [publicTrackingUrl, setPublicTrackingUrl] = useState('');
 
   const updateFormData = (updates) => {
     setFormData(prev => ({
@@ -118,11 +119,13 @@ function MultiStepEmergencyReport() {
         emergency_type: formData.emergencyType,
         latitude: lat,
         longitude: lng,
+        reporter_phone: formData.contactInfo?.phone || '',
         severity: formData.severity,
         description: formData.description || null
       });
 
       console.log('Emergency submitted successfully:', response.data);
+      setPublicTrackingUrl('');
       
       // Move to success step
       setCurrentStep(3);
@@ -203,8 +206,10 @@ function MultiStepEmergencyReport() {
                   email: user?.email || ''
                 }
               });
+              setPublicTrackingUrl('');
             }}
             onClose={() => navigate('/')}
+            publicTrackingUrl={publicTrackingUrl}
           />
         );
       

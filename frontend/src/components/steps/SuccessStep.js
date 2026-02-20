@@ -22,7 +22,7 @@ const EMERGENCY_TYPE_INFO = {
   }
 };
 
-function SuccessStep({ data, onStartNew, onClose }) {
+function SuccessStep({ data, onStartNew, onClose, publicTrackingUrl }) {
   const { user } = useAuth();
   const [isAnimated, setIsAnimated] = useState(false);
   const [confirmationCallTimer, setConfirmationCallTimer] = useState(120); // 2 minutes
@@ -220,6 +220,18 @@ function SuccessStep({ data, onStartNew, onClose }) {
 
         {/* Action Buttons */}
         <div className="success-actions">
+          {publicTrackingUrl && (
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <a
+                href={publicTrackingUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-primary"
+              >
+                📍 Track Response Vehicle Live
+              </a>
+            </div>
+          )}
           {isReporter && (
             <div className="reporter-actions">
               <p className="action-description">

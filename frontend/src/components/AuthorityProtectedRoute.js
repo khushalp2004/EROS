@@ -93,6 +93,8 @@ export default function AuthorityProtectedRoute({ children }) {
     if (user?.role === 'admin') {
       // Admin users should go to admin dashboard
       return <Navigate to="/admin" replace />;
+    } else if (user?.role === 'unit') {
+      return <Navigate to="/unit" replace />;
     } else if (user?.role === 'reporter') {
       // Reporter users should stay on the reporter page
       return <Navigate to="/" replace />;

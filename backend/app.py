@@ -49,11 +49,13 @@
 #     socketio.run(app, debug=True, port=5001)
 
 
+import os
 from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SECRET_KEY
 from models import db
+from extensions import limiter
 from routes.unit_routes import unit_bp
 from routes.authority_routes import authority_bp
 from routes.emergency_routes import emergency_bp
@@ -84,10 +86,13 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 86400  # 24 hours
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = 2592000  # 30 days
 app.config["JWT_ALGORITHM"] = "HS256"
 app.config["JWT_IDENTITY_CLAIM"] = "sub"
+app.config["RATELIMIT_STORAGE_URI"] = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
+app.config["RATELIMIT_HEADERS_ENABLED"] = True
 
 # Initialize extensions
 db.init_app(app)
 jwt = JWTManager(app)
+limiter.init_app(app)
 
 # Initialize WebSocket
 socketio = init_websocket(app)
@@ -110,9 +115,7 @@ if __name__ == "__main__":
         db.create_all()
     
     # Get port from environment variable, default to 5001
-    import os
     port = int(os.environ.get('PORT', 5001))
     
     # Run with SocketIO
-    socketio.run(app, debug=True, port=port, host='0.0.0.0')
-
+    socketio.run(app, debug=True, port=port, host='0.0.0.0', allow_unsafe_werkzeug=True)

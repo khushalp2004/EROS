@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io } from 'socket.io-client';
 
 // Centralized WebSocket manager with request coordination
-const SOCKET_URL = 'http://127.0.0.1:5001';
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://127.0.0.1:5001';
 
 // Global connection instance
 let globalSocket = null;

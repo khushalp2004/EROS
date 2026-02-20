@@ -1,11 +1,16 @@
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import Unit, UnitLocation
 from models.location import RouteCalculation
 from models.emergency import Emergency
+from models.user import User
 from models import db
 from datetime import datetime
 import json
 import math
+import functools
+from routes.notification_routes import create_emergency_notification, create_unit_notification
+from events import socketio
 
 def calculate_route_progress(lat, lng, route_geometry):
     """Calculate progress along route from current position"""
@@ -113,6 +118,39 @@ def point_to_segment_distance(point, segment_start, segment_end):
     }
 
 unit_bp = Blueprint('unit_bp', __name__)
+
+
+def _get_user_unit_id(user):
+    """
+    Resolve a unit user to unit_id using organization field.
+    Supported formats:
+    - "UNIT_ID:12"
+    - "12"
+    """
+    org = (user.organization or "").strip()
+    if not org:
+        return None
+    if org.upper().startswith("UNIT_ID:"):
+        org = org.split(":", 1)[1].strip()
+    if org.isdigit():
+        return int(org)
+    return None
+
+
+def unit_required():
+    def decorator(f):
+        @jwt_required()
+        @functools.wraps(f)
+        def wrapped(*args, **kwargs):
+            current_user_id = get_jwt_identity()
+            user = User.query.get(current_user_id)
+            if not user:
+                return jsonify({"success": False, "message": "User not found"}), 401
+            if user.role != "unit":
+                return jsonify({"success": False, "message": "Unit access required"}), 403
+            return f(user, *args, **kwargs)
+        return wrapped
+    return decorator
 
 @unit_bp.route('/units', methods=['GET'])
 def get_units():
@@ -463,3 +501,147 @@ def get_active_unit_routes():
         "total_active": len(routes_data),
         "timestamp": datetime.utcnow().isoformat()
     })
+
+
+@unit_bp.route('/unit/me/emergency', methods=['GET'])
+@unit_required()
+def get_my_assigned_emergency(current_user):
+    unit_id = _get_user_unit_id(current_user)
+    if not unit_id:
+        return jsonify({
+            "success": False,
+            "message": "Unit user is not linked. Set organization to UNIT_ID:<id>."
+        }), 400
+
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({"success": False, "message": f"Unit {unit_id} not found"}), 404
+
+    emergency = Emergency.query.filter_by(assigned_unit=unit_id, status='ASSIGNED').first()
+    if not emergency:
+        return jsonify({
+            "success": True,
+            "unit": {
+                "unit_id": unit.unit_id,
+                "unit_vehicle_number": unit.unit_vehicle_number,
+                "service_type": unit.service_type,
+                "status": unit.status,
+                "latitude": unit.latitude,
+                "longitude": unit.longitude
+            },
+            "assigned_emergency": None
+        }), 200
+
+    route_calc = RouteCalculation.query.filter_by(
+        unit_id=unit_id,
+        emergency_id=emergency.request_id,
+        is_active=True
+    ).order_by(RouteCalculation.timestamp.desc()).first()
+
+    route_positions = None
+    if route_calc and route_calc.polyline_positions:
+        try:
+            route_positions = json.loads(route_calc.polyline_positions)
+        except Exception:
+            route_positions = None
+
+    return jsonify({
+        "success": True,
+        "unit": {
+            "unit_id": unit.unit_id,
+            "unit_vehicle_number": unit.unit_vehicle_number,
+            "service_type": unit.service_type,
+            "status": unit.status,
+            "latitude": unit.latitude,
+            "longitude": unit.longitude
+        },
+        "assigned_emergency": {
+            "request_id": emergency.request_id,
+            "emergency_type": emergency.emergency_type,
+            "latitude": emergency.latitude,
+            "longitude": emergency.longitude,
+            "status": emergency.status,
+            "created_at": emergency.created_at.isoformat() if emergency.created_at else None
+        },
+        "route": {
+            "positions": route_positions,
+            "distance": route_calc.distance if route_calc else None,
+            "duration": route_calc.duration if route_calc else None,
+            "waypoint_count": route_calc.waypoint_count if route_calc else 0
+        } if route_calc else None
+    }), 200
+
+
+@unit_bp.route('/unit/me/complete/<int:emergency_id>', methods=['POST'])
+@unit_required()
+def complete_my_emergency(current_user, emergency_id):
+    unit_id = _get_user_unit_id(current_user)
+    if not unit_id:
+        return jsonify({
+            "success": False,
+            "message": "Unit user is not linked. Set organization to UNIT_ID:<id>."
+        }), 400
+
+    unit = Unit.query.get(unit_id)
+    if not unit:
+        return jsonify({"success": False, "message": f"Unit {unit_id} not found"}), 404
+
+    emergency = Emergency.query.get(emergency_id)
+    if not emergency:
+        return jsonify({"success": False, "message": "Emergency not found"}), 404
+    if emergency.assigned_unit != unit_id or emergency.status != "ASSIGNED":
+        return jsonify({
+            "success": False,
+            "message": "This emergency is not actively assigned to your unit"
+        }), 400
+
+    unit.status = "AVAILABLE"
+    unit.last_updated = datetime.utcnow()
+    emergency.status = "COMPLETED"
+    db.session.commit()
+
+    create_emergency_notification(emergency, 'completed')
+    create_unit_notification(unit, 'completed', emergency=emergency)
+    routes_cleared = RouteCalculation.deactivate_routes_for_emergency(emergency.request_id)
+
+    emergency_data = {
+        'request_id': emergency.request_id,
+        'emergency_type': emergency.emergency_type,
+        'latitude': emergency.latitude,
+        'longitude': emergency.longitude,
+        'status': emergency.status,
+        'approved_by': emergency.approved_by,
+        'assigned_unit': emergency.assigned_unit,
+        'created_at': emergency.created_at.isoformat() if emergency.created_at else None,
+        'completed_at': datetime.utcnow().isoformat()
+    }
+    unit_data = {
+        'unit_id': unit.unit_id,
+        'service_type': unit.service_type,
+        'status': unit.status,
+        'latitude': unit.latitude,
+        'longitude': unit.longitude
+    }
+
+    socketio.emit('emergency_updated', {
+        'action': 'completed',
+        'emergency': emergency_data,
+        'unit': unit_data,
+        'completed_by': 'unit',
+        'route_reset_info': {
+            'emergency_id': emergency.request_id,
+            'unit_id': unit.unit_id,
+            'routes_cleared': routes_cleared,
+            'reset_timestamp': datetime.utcnow().isoformat()
+        }
+    })
+    socketio.emit('unit_status_update', {
+        'unit_id': unit.unit_id,
+        'status': 'AVAILABLE',
+        'emergency_id': emergency.request_id
+    })
+
+    return jsonify({
+        "success": True,
+        "message": f"Emergency {emergency.request_id} completed by unit {unit.unit_id}. Unit is now AVAILABLE."
+    }), 200

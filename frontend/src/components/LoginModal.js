@@ -72,6 +72,8 @@ export default function LoginModal({ isOpen, onClose }) {
               navigate('/admin');
             } else if (user.role === 'authority') {
               navigate('/dashboard');
+            } else if (user.role === 'unit') {
+              navigate('/unit');
             }
             // For other roles (like reporter), no redirection needed
             
