@@ -1,5 +1,6 @@
 import os
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -13,6 +14,7 @@ class EmailService:
     """
     
     def __init__(self):
+        self.email_provider = os.getenv('EMAIL_PROVIDER', 'smtp').strip().lower()
         self.smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
         self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
         self.smtp_username = os.getenv('SMTP_USERNAME', '')
@@ -21,6 +23,10 @@ class EmailService:
         self.from_name = os.getenv('FROM_NAME', 'EROS System')
         self.admin_email = os.getenv('ADMIN_EMAIL', '')
         self.frontend_base_url = os.getenv('FRONTEND_BASE_URL', 'http://localhost:3000')
+        self.resend_api_key = os.getenv('RESEND_API_KEY', '').strip()
+        self.resend_api_base = os.getenv('RESEND_API_BASE', 'https://api.resend.com').rstrip('/')
+        self.sender_api_key = os.getenv('SENDER_API_KEY', '').strip()
+        self.sender_api_base = os.getenv('SENDER_API_BASE', 'https://api.sender.net').rstrip('/')
 
     def send_email(self, to_email, subject, html_content, text_content=None):
         """
@@ -35,35 +41,113 @@ class EmailService:
         Returns:
             tuple: (success: bool, message: str)
         """
+        if self.email_provider == 'sender':
+            success, message = self._send_via_sender(to_email, subject, html_content, text_content)
+            if success:
+                return True, message
+            smtp_success, smtp_message = self._send_via_smtp(to_email, subject, html_content, text_content)
+            if smtp_success:
+                return True, f"{message}; fallback SMTP success"
+            return False, f"{message}; SMTP fallback failed: {smtp_message}"
+
+        if self.email_provider == 'resend':
+            success, message = self._send_via_resend(to_email, subject, html_content, text_content)
+            if success:
+                return True, message
+            # Fallback to SMTP if configured
+            smtp_success, smtp_message = self._send_via_smtp(to_email, subject, html_content, text_content)
+            if smtp_success:
+                return True, f"{message}; fallback SMTP success"
+            return False, f"{message}; SMTP fallback failed: {smtp_message}"
+
+        return self._send_via_smtp(to_email, subject, html_content, text_content)
+
+    def _send_via_smtp(self, to_email, subject, html_content, text_content=None):
         try:
             if not self.smtp_username or not self.smtp_password:
                 return False, "SMTP credentials are not configured"
 
-            # Create message
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
             msg['From'] = f"{self.from_name} <{self.from_email}>"
             msg['To'] = to_email
-            
-            # Add plain text content
+
             if text_content:
                 text_part = MIMEText(text_content, 'plain')
                 msg.attach(text_part)
-            
-            # Add HTML content
+
             html_part = MIMEText(html_content, 'html')
             msg.attach(html_part)
-            
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+
+            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=10) as server:
                 server.starttls()
                 server.login(self.smtp_username, self.smtp_password)
                 server.send_message(msg)
-            
-            return True, "Email sent successfully"
-            
+
+            return True, "Email sent successfully (SMTP)"
         except Exception as e:
-            return False, f"Failed to send email: {str(e)}"
+            return False, f"Failed to send email via SMTP: {str(e)}"
+
+    def _send_via_sender(self, to_email, subject, html_content, text_content=None):
+        try:
+            if not self.sender_api_key:
+                return False, "Sender API key is not configured"
+
+            payload = {
+                "from": {
+                    "email": self.from_email,
+                    "name": self.from_name,
+                },
+                "to": {
+                    "email": to_email,
+                },
+                "subject": subject,
+                "html": html_content,
+            }
+            if text_content:
+                payload["text"] = text_content
+
+            response = requests.post(
+                f"{self.sender_api_base}/v2/message/send",
+                headers={
+                    "Authorization": f"Bearer {self.sender_api_key}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=10,
+            )
+            if 200 <= response.status_code < 300:
+                return True, "Email sent successfully (Sender)"
+            return False, f"Sender error {response.status_code}: {response.text}"
+        except Exception as e:
+            return False, f"Failed to send email via Sender: {str(e)}"
+
+    def _send_via_resend(self, to_email, subject, html_content, text_content=None):
+        try:
+            if not self.resend_api_key:
+                return False, "Resend API key is not configured"
+
+            response = requests.post(
+                f"{self.resend_api_base}/emails",
+                headers={
+                    "Authorization": f"Bearer {self.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": f"{self.from_name} <{self.from_email}>",
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_content,
+                    **({"text": text_content} if text_content else {}),
+                },
+                timeout=10,
+            )
+            if 200 <= response.status_code < 300:
+                return True, "Email sent successfully (Resend)"
+            return False, f"Resend error {response.status_code}: {response.text}"
+        except Exception as e:
+            return False, f"Failed to send email via Resend: {str(e)}"
     
     def send_verification_email(self, user, verification_token):
         """
