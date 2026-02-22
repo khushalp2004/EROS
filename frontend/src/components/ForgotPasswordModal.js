@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { authAPI } from '../api';
+import '../styles/forgot-password-modal.css';
 
 export default function ForgotPasswordModal({ isOpen, onClose, onSwitchToReset }) {
   const [email, setEmail] = useState('');
@@ -45,57 +46,21 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSwitchToReset }
   if (!isOpen) return null;
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1100
-    }}>
-      <div style={{
-        backgroundColor: 'var(--bg-primary)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-6)',
-        maxWidth: '400px',
-        width: '90%',
-        boxShadow: 'var(--shadow-xl)',
-        border: '1px solid var(--gray-200)'
-      }}>
-        <div style={{ marginBottom: 'var(--space-10)' }}>
-          <h2 style={{
-            margin: '0 0 var(--space-2) 0',
-            fontSize: 'var(--text-xl)',
-            fontWeight: 'var(--font-bold)',
-            color: 'var(--text-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}>
-            🔑 Forgot Password
+    <div className="forgot-modal-overlay">
+      <div className="forgot-modal-card" role="dialog" aria-modal="true" aria-labelledby="forgot-modal-title">
+        <div className="forgot-modal-head">
+          <h2 id="forgot-modal-title" className="forgot-modal-title">
+            <span className="forgot-modal-title-icon" aria-hidden="true">🔑</span>
+            Forgot Password
           </h2>
-          <p style={{
-            margin: 0,
-            color: 'var(--text-muted)',
-            fontSize: 'var(--text-sm)'
-          }}>
+          <p className="forgot-modal-subtitle">
             Enter your email address and we'll send you a link to reset your password.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: 'var(--space-2)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-medium)',
-              color: 'var(--text-primary)'
-            }}>
+        <form onSubmit={handleSubmit} className="forgot-modal-form">
+          <div className="forgot-modal-field">
+            <label className="forgot-modal-label">
               Email Address
             </label>
             <input
@@ -103,101 +68,45 @@ export default function ForgotPasswordModal({ isOpen, onClose, onSwitchToReset }
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email address"
-              style={{
-                width: '100%',
-                padding: 'var(--space-3)',
-                border: '1px solid var(--gray-300)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-sm)',
-                backgroundColor: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
-                boxSizing: 'border-box'
-              }}
+              className="forgot-modal-input"
               required
               disabled={loading || success}
             />
           </div>
 
           {success && (
-            <div style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3)',
-              backgroundColor: 'var(--success-bg)',
-              color: 'var(--success-text)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}>
-              ✅ {success}
+            <div className="forgot-modal-alert success" role="status">
+              {success}
             </div>
           )}
 
           {error && (
-            <div style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3)',
-              backgroundColor: 'var(--error-bg)',
-              color: 'var(--error-text)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)'
-            }}>
-              ❌ {error}
+            <div className="forgot-modal-alert error" role="alert">
+              {error}
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          <div className="forgot-modal-actions">
             <button
               type="button"
               onClick={handleClose}
               disabled={loading || success}
-              style={{
-                flex: 1,
-                padding: 'var(--space-3)',
-                border: '1px solid var(--gray-300)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'var(--bg-primary)',
-                color: 'var(--text-secondary)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--font-medium)',
-                cursor: loading || success ? 'not-allowed' : 'pointer',
-                transition: 'all var(--transition-fast)',
-                opacity: loading || success ? 0.6 : 1
-              }}
+              className="forgot-modal-btn secondary"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || success || !email}
-              style={{
-                flex: 1,
-                padding: 'var(--space-3)',
-                border: '1px solid var(--primary-blue)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: loading || success || !email ? 'var(--gray-300)' : 'var(--primary-blue)',
-                color: 'var(--text-inverse)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--font-medium)',
-                cursor: loading || success || !email ? 'not-allowed' : 'pointer',
-                transition: 'all var(--transition-fast)'
-              }}
+              className="forgot-modal-btn primary"
             >
               {loading ? 'Sending...' : 'Send Reset Link'}
             </button>
           </div>
         </form>
 
-        <div style={{
-          marginTop: 'var(--space-4)',
-          padding: 'var(--space-3)',
-          backgroundColor: 'var(--info-bg)',
-          color: 'var(--info-text)',
-          borderRadius: 'var(--radius-md)',
-          fontSize: 'var(--text-xs)'
-        }}>
-          💡 <strong>Security Note:</strong> The password reset link will expire in 1 hour for security reasons.
+        <div className="forgot-modal-alert info forgot-modal-note">
+          <strong>Security Note:</strong> The password reset link will expire in 1 hour for security reasons.
         </div>
       </div>
     </div>

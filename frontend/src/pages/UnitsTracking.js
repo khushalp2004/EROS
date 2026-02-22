@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import "../styles/dashboard-styles.css";
 import RealtimeMapView from "../components/RealtimeMapView";
 import AddUnit from "../components/AddUnit";
 import DeleteUnit from "../components/DeleteUnit";
 import UnitList from "../components/UnitList";
+import Breadcrumbs from "../components/Breadcrumbs";
 import api, { unitAPI } from "../api";
 import { useWebSocketManager, connectionManager } from "../hooks/useWebSocketManager";
 import backendRouteManager from "../utils/BackendRouteManager";
@@ -34,6 +35,17 @@ const UnitsTracking = () => {
   const [backendRoutes, setBackendRoutes] = useState([]);
   const [showAddUnit, setShowAddUnit] = useState(false);
   const [showDeleteUnit, setShowDeleteUnit] = useState(false);
+  const [unitFilters, setUnitFilters] = useState({
+    status: "ALL",
+    serviceType: "ALL",
+    query: "",
+  });
+  const [unitSortBy, setUnitSortBy] = useState("unit_id");
+  const [unitSortDir, setUnitSortDir] = useState("asc");
+  const [unitsPage, setUnitsPage] = useState(1);
+  const [unitsPerPage] = useState(10);
+  const [unitsTotal, setUnitsTotal] = useState(0);
+  const [unitsTotalPages, setUnitsTotalPages] = useState(1);
 
   const { 
     isConnected, 
@@ -45,13 +57,27 @@ const UnitsTracking = () => {
     getStats
   } = useWebSocketManager();
 
-  const fetchUnits = async () => {
+  const fetchUnits = async (page = 1) => {
     try {
       setLoading(true);
-      const response = await api.get('/api/authority/units');
-      setUnits(response.data);
+      const response = await api.get('/api/authority/units', {
+        params: { page, per_page: unitsPerPage }
+      });
+
+      // Supports both paginated and legacy response shapes.
+      const payload = response.data;
+      const isPaginated = payload && !Array.isArray(payload) && Array.isArray(payload.data);
+      const nextUnits = isPaginated ? payload.data : (Array.isArray(payload) ? payload : []);
+      const resolvedPage = isPaginated ? Number(payload.page || page) : 1;
+
+      setUnits(nextUnits);
+      setUnitsTotal(isPaginated ? Number(payload.total || 0) : nextUnits.length);
+      setUnitsTotalPages(isPaginated ? Math.max(1, Number(payload.total_pages || 1)) : 1);
+      if (resolvedPage !== unitsPage) {
+        setUnitsPage(resolvedPage);
+      }
       
-      if (response.data.length === 0) {
+      if (nextUnits.length === 0) {
         if (window.showToast) {
           window.showToast({
             message: 'No units found. Add new units to start tracking.',
@@ -61,7 +87,7 @@ const UnitsTracking = () => {
         }
       } else {
         if (window.showSuccessToast) {
-          window.showSuccessToast(`Loaded ${response.data.length} units successfully`);
+          window.showSuccessToast(`Loaded ${nextUnits.length} units successfully`);
         }
       }
     } catch (err) {
@@ -88,9 +114,12 @@ const UnitsTracking = () => {
   };
 
   useEffect(() => {
-    fetchUnits();
     fetchEmergencies();
   }, []);
+
+  useEffect(() => {
+    fetchUnits(unitsPage);
+  }, [unitsPage]);
 
   useEffect(() => {
     if (isConnected) {
@@ -344,7 +373,7 @@ const UnitsTracking = () => {
     }
     
     // Optionally refresh to get updated data
-    setTimeout(() => fetchUnits(), 1000);
+    setTimeout(() => fetchUnits(unitsPage), 1000);
   };
 
   const handleUnitDeleted = (deletedUnit) => {
@@ -359,7 +388,15 @@ const UnitsTracking = () => {
     }
     
     // Refresh data to get updated stats
-    setTimeout(() => fetchUnits(), 1000);
+    setTimeout(() => fetchUnits(unitsPage), 1000);
+  };
+
+  const handleNextUnitsPage = () => {
+    setUnitsPage((prev) => Math.min(prev + 1, unitsTotalPages));
+  };
+
+  const handlePrevUnitsPage = () => {
+    setUnitsPage((prev) => Math.max(prev - 1, 1));
   };
 
   const handleToggleSimulation = () => {
@@ -383,6 +420,23 @@ const UnitsTracking = () => {
           duration: 3000
         });
       }
+    }
+  };
+
+  const handleTrackingModeChange = (mode) => {
+    if (mode === 'all') {
+      setTrackingMode('all');
+      setSelectedUnit(null);
+      return;
+    }
+    if (mode === 'simulated') {
+      setTrackingMode('simulated');
+      if (!selectedUnit) return;
+      // keep selected unit context visible but route mode global
+      return;
+    }
+    if (mode === 'selected' && selectedUnit) {
+      setTrackingMode('selected');
     }
   };
 
@@ -427,6 +481,52 @@ const UnitsTracking = () => {
       default: return "#6c757d";
     }
   };
+
+  const unitServiceTypes = useMemo(
+    () => ["ALL", ...Array.from(new Set(units.map((u) => u.service_type).filter(Boolean)))],
+    [units]
+  );
+
+  const filteredUnits = useMemo(() => {
+    const query = unitFilters.query.trim().toLowerCase();
+    const result = units.filter((unit) => {
+      const statusOk = unitFilters.status === "ALL" || unit.status === unitFilters.status;
+      const serviceOk = unitFilters.serviceType === "ALL" || unit.service_type === unitFilters.serviceType;
+      const queryOk =
+        !query ||
+        String(unit.unit_id || "").toLowerCase().includes(query) ||
+        String(unit.unit_vehicle_number || "").toLowerCase().includes(query) ||
+        String(unit.service_type || "").toLowerCase().includes(query) ||
+        String(unit.status || "").toLowerCase().includes(query);
+      return statusOk && serviceOk && queryOk;
+    });
+
+    result.sort((a, b) => {
+      let aVal = a[unitSortBy];
+      let bVal = b[unitSortBy];
+
+      if (unitSortBy === "unit_id") {
+        aVal = Number(aVal || 0);
+        bVal = Number(bVal || 0);
+      } else {
+        aVal = String(aVal || "").toLowerCase();
+        bVal = String(bVal || "").toLowerCase();
+      }
+
+      if (aVal < bVal) return unitSortDir === "asc" ? -1 : 1;
+      if (aVal > bVal) return unitSortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [units, unitFilters, unitSortBy, unitSortDir]);
+
+  const unitStatusCounts = useMemo(() => ({
+    AVAILABLE: units.filter((u) => u.status === "AVAILABLE").length,
+    ENROUTE: units.filter((u) => u.status === "ENROUTE").length,
+    DISPATCHED: units.filter((u) => u.status === "DISPATCHED").length,
+    BUSY: units.filter((u) => u.status === "BUSY").length
+  }), [units]);
 
   // ✅ ENHANCED: Build polylines using backend route data with real-time progress
   const realtimeRoutePolylines = React.useMemo(() => {
@@ -701,7 +801,7 @@ const UnitsTracking = () => {
                   duration: 2000
                 });
               }
-              fetchUnits();
+              fetchUnits(unitsPage);
             }}
             className="btn btn-primary"
           >
@@ -714,51 +814,52 @@ const UnitsTracking = () => {
 
   return (
     <div className="dashboard-container">
-      <div className="dashboard-header">
-        <div className="dashboard-header-content">
-          <h1 className="dashboard-title">
-            📍 Real-Time Unit Tracking
-          </h1>
-          <p className="dashboard-subtitle">
-            Monitor emergency response units with live tracking and route optimization
-          </p>
-        </div>
-      </div>
+      <Breadcrumbs />
 
       <div className="dashboard-main">
-        <div className="dashboard-stats-grid-balanced">
-          <div className="dashboard-stat-card-balanced available">
-            <div className="dashboard-stat-icon">📍</div>
-            <div className="dashboard-stat-value">
-              {units.length}
-            </div>
-            <div className="dashboard-stat-label">Total Units</div>
+        <div className="units-page-toolbar">
+          <div className="units-mode-switch" role="tablist" aria-label="Tracking mode">
+            <button
+              type="button"
+              className={`units-mode-btn ${trackingMode === 'all' ? 'active' : ''}`}
+              onClick={() => handleTrackingModeChange('all')}
+            >
+              All Units
+            </button>
+            <button
+              type="button"
+              className={`units-mode-btn ${trackingMode === 'simulated' ? 'active' : ''}`}
+              onClick={() => handleTrackingModeChange('simulated')}
+            >
+              Live Routes
+            </button>
+            <button
+              type="button"
+              className={`units-mode-btn ${trackingMode === 'selected' ? 'active' : ''}`}
+              onClick={() => handleTrackingModeChange('selected')}
+              disabled={!selectedUnit}
+            >
+              Focused Unit
+            </button>
           </div>
-
-          <div className="dashboard-stat-card-balanced active">
-            <div className="dashboard-stat-icon">🔴</div>
-            <div className="dashboard-stat-value">
-              {simulationStats.activeSimulations}
-            </div>
-            <div className="dashboard-stat-label">Live Simulations</div>
-          </div>
-
-          <div className="dashboard-stat-card-balanced pending">
-            <div className="dashboard-stat-icon">🚨</div>
-            <div className="dashboard-stat-value">
-              {simulationStats.totalRoutes}
-            </div>
-            <div className="dashboard-stat-label">Assigned Routes</div>
-          </div>
-
-          <div className={`dashboard-stat-card-balanced status ${isConnected ? 'connected' : 'disconnected'}`}>
-            <div className="dashboard-stat-icon">{isConnected ? '🟢' : '🔴'}</div>
-            <div className="dashboard-stat-value">
-              {isConnected ? 'ONLINE' : 'OFFLINE'}
-            </div>
-            <div className="dashboard-stat-label">System Status</div>
+          <div className="units-toolbar-meta">
+            <span className={`units-dot ${isConnected ? 'online' : 'offline'}`}></span>
+            {isConnected ? 'Realtime Connected' : 'Realtime Disconnected'}
           </div>
         </div>
+
+        {selectedUnit && (
+          <div className="units-context-banner">
+            <div className="units-context-main">
+              <strong>{getServiceEmoji(selectedUnit.service_type)} Unit {selectedUnit.unit_id}</strong>
+              <span>{selectedUnit.unit_vehicle_number || 'No vehicle number'} • {selectedUnit.service_type}</span>
+            </div>
+            <div className="units-context-actions">
+              <span className="units-context-status">Status: {selectedUnit.status || 'UNKNOWN'}</span>
+              <button type="button" onClick={handleShowAllUnits}>Clear Focus</button>
+            </div>
+          </div>
+        )}
 
         {connectionError && (
           <div className="connection-error-enhanced">
@@ -792,42 +893,24 @@ const UnitsTracking = () => {
           {/* Map Section */}
           <div className="dashboard-map-section">
             <div className="dashboard-map-header">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="units-map-header-row">
                 <h3 className="dashboard-map-title">
                   🗺️ Unit Tracking Map
                 </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <label style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-1)',
-                    fontSize: 'var(--text-sm)',
-                    cursor: 'pointer'
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={trackingMode === 'simulated'}
-                      onChange={handleToggleSimulation}
-                      style={{ transform: 'scale(1.1)' }}
-                    />
-                    <span>📊 Show Routes</span>
-                  </label>
-                </div>
+                <button
+                  type="button"
+                  className="units-map-toggle-btn"
+                  onClick={handleToggleSimulation}
+                >
+                  {trackingMode === 'simulated' ? 'Hide Route Overlay' : 'Show Route Overlay'}
+                </button>
               </div>
               {selectedUnit && (
-                <div style={{
-                  fontSize: 'var(--text-sm)',
-                  color: 'var(--primary-blue)',
-                  fontWeight: 'var(--font-medium)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)',
-                  marginTop: 'var(--space-1)'
-                }}>
+                <div className="units-map-selected-meta">
                   <span>🎯 Showing:</span>
                   <span>Unit {selectedUnit.unit_id}</span>
                   {selectedUnit.service_type && (
-                    <span style={{ color: 'var(--secondary-green)' }}>
+                    <span className="units-map-selected-type">
                       ({selectedUnit.service_type})
                     </span>
                   )}
@@ -842,27 +925,56 @@ const UnitsTracking = () => {
                 showRealtimeData={true}
                 animateRoutes={trackingMode !== 'all'}
                 center={selectedUnit ? [selectedUnit.latitude, selectedUnit.longitude] : undefined}
+                height="100%"
               />
             </div>
           </div>
 
           {/* Quick Actions */}
           <div className="dashboard-actions-section">
-            <h3 className="dashboard-actions-title">
-              ⚡ Quick Actions
-            </h3>
+            <div className="units-actions-headline">
+              <h3 className="dashboard-actions-title">
+                ⚡ Quick Actions
+              </h3>
+              <p className="units-actions-subtitle">
+                Manage field units and sync real-time tracking from one command panel.
+              </p>
+            </div>
 
-            <div className="dashboard-actions-grid">
+            <div className="units-action-kpis">
+              <div className="units-action-kpi total">
+                <span className="units-action-kpi-icon">📍</span>
+                <span className="units-action-kpi-label">Total Units</span>
+                <strong className="units-action-kpi-value">{units.length}</strong>
+              </div>
+              <div className="units-action-kpi live">
+                <span className="units-action-kpi-icon">🔴</span>
+                <span className="units-action-kpi-label">Live Simulations</span>
+                <strong className="units-action-kpi-value">{simulationStats.activeSimulations}</strong>
+              </div>
+              <div className="units-action-kpi routes">
+                <span className="units-action-kpi-icon">🚨</span>
+                <span className="units-action-kpi-label">Assigned Routes</span>
+                <strong className="units-action-kpi-value">{simulationStats.totalRoutes}</strong>
+              </div>
+              <div className={`units-action-kpi status ${isConnected ? 'online' : 'offline'}`}>
+                <span className="units-action-kpi-icon">{isConnected ? '🟢' : '🔴'}</span>
+                <span className="units-action-kpi-label">System Status</span>
+                <strong className="units-action-kpi-value">{isConnected ? 'ONLINE' : 'OFFLINE'}</strong>
+              </div>
+            </div>
+
+            <div className="dashboard-actions-grid units-actions-grid-refined">
               <button
                 onClick={() => setShowAddUnit(true)}
-                className="dashboard-btn dashboard-btn-secondary "
+                className="dashboard-btn dashboard-btn-secondary units-action-btn add"
               >
                 🚛 Add New Unit
               </button>
 
               <button
                 onClick={() => setShowDeleteUnit(true)}
-                className="dashboard-btn dashboard-btn-primary"
+                className="dashboard-btn dashboard-btn-primary units-action-btn delete"
               >
                 🗑️ Delete Vehicle
               </button>
@@ -879,7 +991,7 @@ const UnitsTracking = () => {
                   }
 
                   try {
-                    await fetchUnits();
+                    await fetchUnits(unitsPage);
                     await fetchEmergencies();
                     refreshUnitLocations();
 
@@ -896,7 +1008,7 @@ const UnitsTracking = () => {
                     }
                   }
                 }}
-                className="dashboard-btn "
+                className="dashboard-btn units-action-btn refresh"
               >
                 🔄 Refresh Data
               </button>
@@ -907,24 +1019,14 @@ const UnitsTracking = () => {
               <h4 className="dashboard-summary-title">
                 📊 Unit Status
               </h4>
-              <div className="dashboard-summary-grid">
-                <div className="dashboard-summary-row">
-                  <span className="dashboard-summary-label">Available:</span>
-                  <span className="dashboard-summary-value available">
-                    {units.filter(u => u.status === 'AVAILABLE').length}
-                  </span>
+              <div className="dashboard-actions-mini-stats">
+                <div className="dashboard-mini-stat available">
+                  <span className="dashboard-mini-label">Available</span>
+                  <strong>{units.filter(u => u.status === 'AVAILABLE').length}</strong>
                 </div>
-                <div className="dashboard-summary-row">
-                  <span className="dashboard-summary-label">Busy:</span>
-                  <span className="dashboard-summary-value busy">
-                    {units.filter(u => ['DISPATCHED', 'ENROUTE'].includes(u.status)).length}
-                  </span>
-                </div>
-                <div className="dashboard-summary-row">
-                  <span className="dashboard-summary-label">Total:</span>
-                  <span className="dashboard-summary-value">
-                    {units.length}
-                  </span>
+                <div className="dashboard-mini-stat active">
+                  <span className="dashboard-mini-label">Busy</span>
+                  <strong>{units.filter(u => ['DISPATCHED', 'ENROUTE'].includes(u.status)).length}</strong>
                 </div>
               </div>
             </div>
@@ -934,38 +1036,105 @@ const UnitsTracking = () => {
         {/* Units List Section - Full Width */}
         <div className="units-list-section">
           <div className="units-list-header">
-            <h3 className="units-list-title">
-              {getTrackingModeIcon()} Units Management
-            </h3>
-            <span className="units-list-count">
-              {units.length} total units
-            </span>
-            <div className="units-table-info">
-              {selectedUnit ? (
-                <div className="units-selected-unit-info">
-                  <strong>{getServiceEmoji(selectedUnit.service_type)} Unit {selectedUnit.unit_id}</strong>
-                  <span className="units-focused-view-badge">
-                    🎯 Focused View
-                  </span>
-                </div>
-              ) : (
-                <div className="units-all-units-info">
-                  <strong>{units.length} units</strong>
-                  <span className={`units-simulation-badge ${simulationStats.activeSimulations > 0 ? 'active' : 'inactive'}`}>
-                    {simulationStats.activeSimulations > 0 ? '🔴 Live Simulation' : '🟢 Static Display'}
-                  </span>
-                </div>
-              )}
-              <div className="units-active-routes-info">
-                <span className="units-active-routes-badge">
-                  📊 {realtimeRoutePolylines.length} Active Routes
-                </span>
+            <div className="units-list-header-main">
+              <h3 className="units-list-title">
+                {getTrackingModeIcon()} Units Management
+              </h3>
+            </div>
+            <div className="units-filter-toolbar">
+              <div className="units-filter-controls">
+                <select
+                  value={unitFilters.status}
+                  onChange={(e) => setUnitFilters((prev) => ({ ...prev, status: e.target.value }))}
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="AVAILABLE">Available</option>
+                  <option value="DISPATCHED">Dispatched</option>
+                  <option value="ENROUTE">Enroute</option>
+                  <option value="ARRIVED">Arrived</option>
+                  <option value="BUSY">Busy</option>
+                  <option value="DEPARTED">Departed</option>
+                </select>
+                <select
+                  value={unitFilters.serviceType}
+                  onChange={(e) => setUnitFilters((prev) => ({ ...prev, serviceType: e.target.value }))}
+                >
+                  {unitServiceTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type === "ALL" ? "All Services" : type}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={unitSortBy}
+                  onChange={(e) => setUnitSortBy(e.target.value)}
+                >
+                  <option value="unit_id">Sort: Unit ID</option>
+                  <option value="unit_vehicle_number">Sort: Vehicle Number</option>
+                  <option value="service_type">Sort: Service Type</option>
+                  <option value="status">Sort: Status</option>
+                </select>
+                <button
+                  type="button"
+                  className="units-sort-dir-btn"
+                  onClick={() => setUnitSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
+                >
+                  {unitSortDir === "asc" ? "Asc" : "Desc"}
+                </button>
+                <input
+                  type="text"
+                  value={unitFilters.query}
+                  onChange={(e) => setUnitFilters((prev) => ({ ...prev, query: e.target.value }))}
+                  placeholder="Search by unit, vehicle, type..."
+                />
+                <button
+                  type="button"
+                  className="units-filter-reset-btn"
+                  onClick={() => {
+                    setUnitFilters({ status: "ALL", serviceType: "ALL", query: "" });
+                    setUnitSortBy("unit_id");
+                    setUnitSortDir("asc");
+                    setUnitsPage(1);
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+              <div className="units-status-chips">
+                <button
+                  type="button"
+                  className={`units-status-chip ${unitFilters.status === "AVAILABLE" ? "active" : ""}`}
+                  onClick={() => setUnitFilters((prev) => ({ ...prev, status: unitFilters.status === "AVAILABLE" ? "ALL" : "AVAILABLE" }))}
+                >
+                  Available {unitStatusCounts.AVAILABLE}
+                </button>
+                <button
+                  type="button"
+                  className={`units-status-chip ${unitFilters.status === "ENROUTE" ? "active" : ""}`}
+                  onClick={() => setUnitFilters((prev) => ({ ...prev, status: unitFilters.status === "ENROUTE" ? "ALL" : "ENROUTE" }))}
+                >
+                  Enroute {unitStatusCounts.ENROUTE}
+                </button>
+                <button
+                  type="button"
+                  className={`units-status-chip ${unitFilters.status === "DISPATCHED" ? "active" : ""}`}
+                  onClick={() => setUnitFilters((prev) => ({ ...prev, status: unitFilters.status === "DISPATCHED" ? "ALL" : "DISPATCHED" }))}
+                >
+                  Dispatched {unitStatusCounts.DISPATCHED}
+                </button>
+                <button
+                  type="button"
+                  className={`units-status-chip ${unitFilters.status === "BUSY" ? "active" : ""}`}
+                  onClick={() => setUnitFilters((prev) => ({ ...prev, status: unitFilters.status === "BUSY" ? "ALL" : "BUSY" }))}
+                >
+                  Busy {unitStatusCounts.BUSY}
+                </button>
               </div>
             </div>
           </div>
 
           <UnitList
-            units={units}
+            units={filteredUnits}
             onSelect={handleUnitClick}
             selectedId={selectedUnit?.unit_id}
             onCenterMap={(lat, lng) => {
@@ -973,6 +1142,29 @@ const UnitsTracking = () => {
               setSelectedUnit(prev => prev ? { ...prev, latitude: lat, longitude: lng } : null);
             }}
           />
+          <div className="units-pagination-bar">
+            <div className="units-pagination-meta">
+              Page {unitsPage} of {unitsTotalPages} • Showing up to {unitsPerPage} rows
+            </div>
+            <div className="units-pagination-actions">
+              <button
+                type="button"
+                className="units-page-btn"
+                onClick={handlePrevUnitsPage}
+                disabled={unitsPage <= 1 || loading}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="units-page-btn"
+                onClick={handleNextUnitsPage}
+                disabled={unitsPage >= unitsTotalPages || loading}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Loading Indicator */}

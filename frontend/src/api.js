@@ -29,12 +29,24 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid, clear local storage
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
-      // Optionally redirect to login page
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      const requestUrl = error.config?.url || '';
+      const isAuthRequest =
+        requestUrl.includes('/api/auth/login') ||
+        requestUrl.includes('/api/auth/signup') ||
+        requestUrl.includes('/api/auth/forgot-password') ||
+        requestUrl.includes('/api/auth/reset-password') ||
+        requestUrl.includes('/api/auth/verify-email');
+      const hasAuthToken = !!localStorage.getItem('authToken');
+
+      // For invalid login credentials (or other public auth failures), don't redirect.
+      if (!isAuthRequest && hasAuthToken) {
+        // Session expired or token invalid for authenticated user.
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('pendingUser');
+        if (window.location.pathname !== '/') {
+          window.location.href = '/';
+        }
       }
     }
     return Promise.reject(error);
@@ -172,6 +184,7 @@ export const authAPI = {
     rejectUser: (userId, reason = '') => api.post(`/api/admin/reject-user/${userId}`, { reason }),
     updateUserRole: (userId, role) => api.put(`/api/admin/users/${userId}/role`, { role }),
     updateUserStatus: (userId, isActive) => api.put(`/api/admin/users/${userId}/status`, { is_active: isActive }),
+    lockUser: (userId, durationHours = 24) => api.post(`/api/admin/users/${userId}/lock`, { duration_hours: durationHours }),
     unlockUser: (userId) => api.post(`/api/admin/users/${userId}/unlock`),
     
     // Statistics and health

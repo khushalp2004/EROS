@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import api from "../api";
 import RealtimeMapView from "../components/RealtimeMapView";
 import EmergencyList from "../components/EmergencyList";
+import Breadcrumbs from "../components/Breadcrumbs";
 import { useWebSocketManager } from "../hooks/useWebSocketManager";
 import backendRouteManager from "../utils/BackendRouteManager";
 import { fetchRoute } from "../services/routeService";
@@ -10,6 +11,7 @@ import "../styles/dashboard-styles.css";
 function Dashboard() {
   const [units, setUnits] = useState([]);
   const [emergencies, setEmergencies] = useState([]);
+  const [tableEmergencies, setTableEmergencies] = useState([]);
   const [selectedEmergency, setSelectedEmergency] = useState(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -17,6 +19,15 @@ function Dashboard() {
   const [routes, setRoutes] = useState([]);
   const [routesLoading, setRoutesLoading] = useState(false);
   const [showUnitMarkers, setShowUnitMarkers] = useState(false);
+  const [filters, setFilters] = useState({
+    status: "ALL",
+    type: "ALL",
+    query: "",
+  });
+  const [emergenciesPage, setEmergenciesPage] = useState(1);
+  const [emergenciesPerPage] = useState(10);
+  const [emergenciesTotal, setEmergenciesTotal] = useState(0);
+  const [emergenciesTotalPages, setEmergenciesTotalPages] = useState(1);
   
   // WebSocket connection for real-time updates
   const { isConnected: wsConnected } = useWebSocketManager();
@@ -172,20 +183,34 @@ function Dashboard() {
     }
   }, [selectedEmergency, units, emergencies]);
 
-  const fetchData = async () => {
+  const fetchData = async (page = 1) => {
     try {
       setLoading(true);
-      // Use public API endpoints that don't require authority role
-      const [unitsResponse, emergenciesResponse] = await Promise.all([
+      // Use public API endpoints that don't require authority role.
+      // Keep full emergencies for dashboard map/stats and paginated emergencies for table rendering.
+      const [unitsResponse, emergenciesResponse, pagedEmergenciesResponse] = await Promise.all([
         api.get("/api/units"),
         api.get("/api/emergencies"),
+        api.get("/api/emergencies", {
+          params: { page, per_page: emergenciesPerPage }
+        }),
       ]);
       
       const unitsData = unitsResponse.data || [];
       const emergenciesData = emergenciesResponse.data || [];
+      const pagedPayload = pagedEmergenciesResponse.data;
+      const isPagedShape = pagedPayload && !Array.isArray(pagedPayload) && Array.isArray(pagedPayload.data);
+      const pagedEmergencyRows = isPagedShape ? pagedPayload.data : (Array.isArray(pagedPayload) ? pagedPayload : []);
+      const resolvedPage = isPagedShape ? Number(pagedPayload.page || page) : 1;
       
       setUnits(unitsData);
       setEmergencies(emergenciesData);
+      setTableEmergencies(pagedEmergencyRows);
+      setEmergenciesTotal(isPagedShape ? Number(pagedPayload.total || 0) : pagedEmergencyRows.length);
+      setEmergenciesTotalPages(isPagedShape ? Math.max(1, Number(pagedPayload.total_pages || 1)) : 1);
+      if (resolvedPage !== emergenciesPage) {
+        setEmergenciesPage(resolvedPage);
+      }
       
       // Show toast if no units found
       if (unitsData.length === 0) {
@@ -200,8 +225,8 @@ function Dashboard() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData(emergenciesPage);
+  }, [emergenciesPage]);
 
   // Filter emergencies by status
   const pendingEmergencies = emergencies.filter(e => e.status === 'PENDING');
@@ -211,6 +236,43 @@ function Dashboard() {
   // Unit status counts
   const availableUnits = units.filter(u => u.status === 'AVAILABLE');
   const busyUnits = units.filter(u => ['DISPATCHED', 'ENROUTE'].includes(u.status));
+
+  const emergencyTypes = useMemo(
+    () => ["ALL", ...Array.from(new Set(emergencies.map((e) => e.emergency_type).filter(Boolean)))],
+    [emergencies]
+  );
+
+  const filteredEmergencies = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+    return emergencies.filter((emergency) => {
+      const statusOk = filters.status === "ALL" || emergency.status === filters.status;
+      const typeOk = filters.type === "ALL" || emergency.emergency_type === filters.type;
+      const queryOk =
+        !query ||
+        String(emergency.request_id || "").includes(query) ||
+        String(emergency.emergency_type || "").toLowerCase().includes(query) ||
+        String(emergency.approved_by || "").toLowerCase().includes(query) ||
+        String(emergency.assigned_unit || "").toLowerCase().includes(query);
+
+      return statusOk && typeOk && queryOk;
+    });
+  }, [emergencies, filters]);
+
+  const filteredTableEmergencies = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+    return tableEmergencies.filter((emergency) => {
+      const statusOk = filters.status === "ALL" || emergency.status === filters.status;
+      const typeOk = filters.type === "ALL" || emergency.emergency_type === filters.type;
+      const queryOk =
+        !query ||
+        String(emergency.request_id || "").includes(query) ||
+        String(emergency.emergency_type || "").toLowerCase().includes(query) ||
+        String(emergency.approved_by || "").toLowerCase().includes(query) ||
+        String(emergency.assigned_unit || "").toLowerCase().includes(query);
+
+      return statusOk && typeOk && queryOk;
+    });
+  }, [tableEmergencies, filters]);
 
   // Case-insensitive service type filtering with fallback
   const getAvailableUnitsByType = (emergencyType) => {
@@ -248,9 +310,8 @@ function Dashboard() {
         }
       }
     } else {
-      // No selection: show all emergencies only (NO unit markers)
-      // Use 'emergencies' instead of 'activeEmergencies' to ensure we show all available emergencies
-      emergencies.forEach(emergency => {
+      // No selection: show filtered emergencies only (NO unit markers)
+      filteredEmergencies.forEach(emergency => {
         if (emergency.latitude && emergency.longitude) {
           markers.push({
             ...emergency,
@@ -262,7 +323,7 @@ function Dashboard() {
     }
     
     return markers;
-  }, [units, emergencies, selectedEmergency]);
+  }, [units, filteredEmergencies, selectedEmergency]);
 
   const handleDispatch = async (emergency) => {
     try {
@@ -272,7 +333,7 @@ function Dashboard() {
       
       await api.post(`/api/authority/dispatch/${emergency.request_id}`);
       showToast(`Unit ${vehicleNumber} is dispatched`, "success");
-      await fetchData();
+      await fetchData(emergenciesPage);
     } catch (error) {
       console.error("Dispatch error:", error);
       const msg = error?.response?.data?.error || "No ambulance available for this emergency (within 50 km).";
@@ -284,7 +345,7 @@ function Dashboard() {
     try {
       await api.post(`/api/authority/complete/${emergency.request_id}`);
       showToast("Mark as done", "success");
-      await fetchData();
+      await fetchData(emergenciesPage);
     } catch (error) {
       showToast("Failed to complete emergency", "error");
     }
@@ -301,6 +362,14 @@ function Dashboard() {
     return colors[status] || '#6c757d';
   };
 
+  const handleNextEmergenciesPage = () => {
+    setEmergenciesPage((prev) => Math.min(prev + 1, emergenciesTotalPages));
+  };
+
+  const handlePrevEmergenciesPage = () => {
+    setEmergenciesPage((prev) => Math.max(prev - 1, 1));
+  };
+
   return (
     <div className="dashboard-container">
       {/* Toast Notification */}
@@ -310,60 +379,13 @@ function Dashboard() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="dashboard-header">
-        <div className="dashboard-header-content">
-          <h1 className="dashboard-title">
-            🚨 Emergency Dashboard
-          </h1>
-          <p className="dashboard-subtitle">
-            Real-time emergency response management
-          </p>
-        </div>
-      </div>
+      <Breadcrumbs />
 
       <div className="dashboard-main">
-        {/* Status Cards */}
-        <div className="dashboard-stats-grid-balanced">
-          <div className="dashboard-stat-card-balanced pending">
-            <div className="dashboard-stat-icon">🚨</div>
-            <div className="dashboard-stat-value">
-              {pendingEmergencies.length}
-            </div>
-            <div className="dashboard-stat-label">Pending Emergencies</div>
-          </div>
-
-          <div className="dashboard-stat-card-balanced active">
-            <div className="dashboard-stat-icon">🚑</div>
-            <div className="dashboard-stat-value">
-              {activeEmergencies.length}
-            </div>
-            <div className="dashboard-stat-label">Active Emergencies</div>
-          </div>
-
-          <div className="dashboard-stat-card-balanced available">
-            <div className="dashboard-stat-icon">✅</div>
-            <div className="dashboard-stat-value">
-              {availableUnits.length}
-            </div>
-            <div className="dashboard-stat-label">Available Units</div>
-          </div>
-
-          <div className={`dashboard-stat-card-balanced status ${wsConnected ? 'connected' : 'disconnected'}`}>
-            <div className="dashboard-stat-icon">{wsConnected ? '🟢' : '🔴'}</div>
-            <div className="dashboard-stat-value">
-              {wsConnected ? 'ONLINE' : 'OFFLINE'}
-            </div>
-            <div className="dashboard-stat-label">System Status</div>
-          </div>
-        </div>
-
-
-
         {/* Main Content */}
-        <div className="dashboard-content-grid">
+        <div className="dashboard-content-grid" id="dashboard-stats">
           {/* Map Section */}
-          <div className="dashboard-map-section">
+          <div className="dashboard-map-section" id="dashboard-map">
             <div className="dashboard-map-header">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <h3 className="dashboard-map-title">
@@ -421,12 +443,14 @@ function Dashboard() {
                 showRealtimeData={true}
                 animateRoutes={true}
                 showUnitMarkers={showUnitMarkers}
+                zoom={12}
+                height="100%"
               />
             </div>
           </div>
 
           {/* Quick Actions */}
-          <div className="dashboard-actions-section">
+          <div className="dashboard-actions-section" id="dashboard-actions">
             <h3 className="dashboard-actions-title">
               ⚡ Quick Actions
             </h3>
@@ -443,66 +467,106 @@ function Dashboard() {
                 disabled={pendingEmergencies.length === 0}
                 className="dashboard-btn dashboard-btn-primary"
               >
-                🚨 Dispatch Emergency
+                🚨 Dispatch
               </button>
 
               <button
-                onClick={() => fetchData()}
+                onClick={() => fetchData(emergenciesPage)}
                 className="dashboard-btn dashboard-btn-secondary"
               >
-                🔄 Refresh Data
+                🔄 Refresh
               </button>
 
               <button
                 onClick={() => showToast('Emergency broadcast sent', 'success')}
                 className="dashboard-btn dashboard-btn-warning"
               >
-                📢 Send Alert
+                📢 Alert
               </button>
             </div>
 
-            {/* Unit Status Summary */}
-            <div className="dashboard-actions-summary">
-              <h4 className="dashboard-summary-title">
-                📊 Unit Status
-              </h4>
-              <div className="dashboard-summary-grid">
-                <div className="dashboard-summary-row">
-                  <span className="dashboard-summary-label">Available:</span>
-                  <span className="dashboard-summary-value available">
-                    {availableUnits.length}
-                  </span>
-                </div>
-                <div className="dashboard-summary-row">
-                  <span className="dashboard-summary-label">Busy:</span>
-                  <span className="dashboard-summary-value busy">
-                    {busyUnits.length}
-                  </span>
-                </div>
-                <div className="dashboard-summary-row">
-                  <span className="dashboard-summary-label">Total:</span>
-                  <span className="dashboard-summary-value">
-                    {units.length}
-                  </span>
-                </div>
+            <div className="dashboard-actions-mini-stats">
+              <div className="dashboard-mini-stat pending">
+                <span className="dashboard-mini-label">Pending</span>
+                <strong>{pendingEmergencies.length}</strong>
+              </div>
+              <div className="dashboard-mini-stat active">
+                <span className="dashboard-mini-label">Active</span>
+                <strong>{activeEmergencies.length}</strong>
+              </div>
+              <div className="dashboard-mini-stat available">
+                <span className="dashboard-mini-label">Available</span>
+                <strong>{availableUnits.length}</strong>
+              </div>
+              <div className={`dashboard-mini-stat ${wsConnected ? 'online' : 'offline'}`}>
+                <span className="dashboard-mini-label">System</span>
+                <strong>{wsConnected ? 'Online' : 'Offline'}</strong>
               </div>
             </div>
           </div>
         </div>
 
         {/* Emergency List */}
-        <div className="dashboard-emergency-section">
+        <div className="dashboard-emergency-section" id="dashboard-emergencies">
           <div className="dashboard-emergency-header">
-            <h3 className="dashboard-emergency-title">
-              📋 Emergency Management
-            </h3>
-            <span className="dashboard-emergency-count">
-              {emergencies.length} total emergencies
-            </span>
+              <h3 className="dashboard-emergency-title">
+                📋 Emergency Management
+              </h3>
+              {/* <hr/> */}
+            <div className="dashboard-emergency-filters">
+              <select
+                value={filters.status}
+                onChange={(e) => {
+                  setFilters((prev) => ({ ...prev, status: e.target.value }));
+                  setEmergenciesPage(1);
+                }}
+                className="dashboard-emergency-filter-input"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="PENDING">Pending</option>
+                <option value="APPROVED">Approved</option>
+                <option value="ASSIGNED">Assigned</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+              <select
+                value={filters.type}
+                onChange={(e) => {
+                  setFilters((prev) => ({ ...prev, type: e.target.value }));
+                  setEmergenciesPage(1);
+                }}
+                className="dashboard-emergency-filter-input"
+              >
+                {emergencyTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type === "ALL" ? "All Types" : type}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={filters.query}
+                onChange={(e) => {
+                  setFilters((prev) => ({ ...prev, query: e.target.value }));
+                  setEmergenciesPage(1);
+                }}
+                placeholder="Search emergencies..."
+                className="dashboard-emergency-filter-input dashboard-emergency-filter-search"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setFilters({ status: "ALL", type: "ALL", query: "" });
+                  setEmergenciesPage(1);
+                }}
+                className="dashboard-emergency-filter-reset"
+              >
+                Reset
+              </button>
+            </div>
           </div>
           
           <EmergencyList
-            emergencies={emergencies}
+            emergencies={filteredTableEmergencies}
             onSelect={setSelectedEmergency}
             onCenterMap={centerMapOnLocation}
             selectedId={selectedEmergency?.request_id}
@@ -514,6 +578,29 @@ function Dashboard() {
               'POLICE': getAvailableUnitsByType('POLICE')
             }}
           />
+          <div className="units-pagination-bar">
+            <div className="units-pagination-meta">
+              Page {emergenciesPage} of {emergenciesTotalPages} • Showing up to {emergenciesPerPage} rows
+            </div>
+            <div className="units-pagination-actions">
+              <button
+                type="button"
+                className="units-page-btn"
+                onClick={handlePrevEmergenciesPage}
+                disabled={emergenciesPage <= 1 || loading}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="units-page-btn"
+                onClick={handleNextEmergenciesPage}
+                disabled={emergenciesPage >= emergenciesTotalPages || loading}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Loading Indicator */}

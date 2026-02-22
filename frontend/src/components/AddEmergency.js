@@ -11,6 +11,8 @@ import L from "leaflet";
 import api from "../api";
 import { useAuth } from "../hooks/useAuth";
 import EmergencyReportedPopup from "./EmergencyReportedPopup";
+import Breadcrumbs from "./Breadcrumbs";
+import "../styles/reporter-home.css";
 import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -162,250 +164,188 @@ function AddEmergency() {
 
   const getEmergencyTypeIcon = (emergencyType) => {
     switch (emergencyType.toLowerCase()) {
-      case 'ambulance': return '';
-      case 'fire': return '';
-      case 'police': return '';
-      default: return '🚨';
+      case 'ambulance': return 'Medical';
+      case 'fire': return 'Fire';
+      case 'police': return 'Police';
+      default: return 'Emergency';
     }
   };
 
   return (
-    <div style={{ padding: "var(--space-)", backgroundColor: "var(--bg-secondary)", minHeight: "calc(100vh - 200px)" }}>
-      {/* Header */}
-      <div className="dashboard-header">
-        <div className="dashboard-header-content">
-          <h1 className="dashboard-title">
-            🚨 Report Emergency
-          </h1>
-          <p className="dashboard-subtitle">
-            Quickly report an emergency and get immediate assistance from our response team
-          </p>
-        </div>
-      </div>
+    <div className="dashboard-container report-page">
+      <Breadcrumbs />
 
-      <div className="container">
-        <div className="form-section fade-in">
-          <h2 className="form-section-title">
-            📋 Emergency Details
-          </h2>
-          
-          <form onSubmit={handleSubmit}>
-            {/* Emergency Type Selection */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="emergency-type">
-                Emergency Type
-              </label>
-              <select
-                id="emergency-type"
-                className="form-control"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                style={{ 
-                  fontSize: 'var(--text-base)',
-                  padding: 'var(--space-4)',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '2px solid var(--gray-300)'
-                }}
-              >
-                <option value="Ambulance"> Ambulance - Medical Emergency</option>
-                <option value="Fire"> Fire - Fire/Explosion Emergency</option>
-                <option value="Police"> Police - Security/Crime Emergency</option>
-              </select>
-              <div className="form-help">
-                Select the type of emergency to ensure the right response team is dispatched
-              </div>
+      <div className="dashboard-main report-shell">
+        <section className="report-intro-card fade-in">
+          <div className="report-intro-main">
+            <h2 className="report-intro-title">Report Emergency</h2>
+            <p className="report-intro-subtitle">
+              Share type, contact, and location in under 30 seconds so the nearest team can be dispatched quickly.
+            </p>
+            <div className="report-urgent-banner">
+              <span className="report-urgent-dot" aria-hidden="true"></span>
+              If there is immediate danger, Dial on our National emergency number<b>112</b>
             </div>
+          </div>
+          <div className="report-intro-badges">
+            <span className="report-badge">24/7 Dispatch</span>
+            <span className="report-badge">Live Unit Routing</span>
+            <span className="report-badge">Priority Triage</span>
+          </div>
+        </section>
 
-            {/* Location Selection */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="reporter-phone">
-                📞 Your Phone Number
-              </label>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <input
-                  type="text"
-                  className="form-control"
-                  value="+91"
-                  readOnly
-                  style={{
-                    width: "84px",
-                    fontSize: 'var(--text-base)',
-                    padding: 'var(--space-4)',
-                    borderRadius: 'var(--radius-lg)',
-                    border: '2px solid var(--gray-300)',
-                    backgroundColor: 'var(--gray-100)',
-                    fontWeight: 700
-                  }}
-                />
-                <input
-                  id="reporter-phone"
-                  type="tel"
-                  className="form-control"
-                  value={reporterPhoneLocal}
-                  onChange={(e) => setReporterPhoneLocal(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                  placeholder="Enter 10-digit mobile number"
-                  required
-                  style={{
-                    fontSize: 'var(--text-base)',
-                    padding: 'var(--space-4)',
-                    borderRadius: 'var(--radius-lg)',
-                    border: '2px solid var(--gray-300)'
-                  }}
-                />
-              </div>
-              <div className="form-help">
-                Dispatch team can call you for confirmation if needed.
-              </div>
-            </div>
+        <div className="report-grid">
+          <div className="report-card form-section fade-in">
+            <h2 className="form-section-title">Emergency Details</h2>
 
-            {/* Location Selection */}
-            <div className="form-group">
-              <label className="form-label">
-                📍 Emergency Location
-              </label>
-              <div className="form-help" style={{ marginBottom: 'var(--space-4)' }}>
-                {position
-                  ? `Selected: ${position[0].toFixed(5)}, ${position[1].toFixed(5)}`
-                  : "Click on the map below to set the emergency location"}
+            <form onSubmit={handleSubmit} className="report-form-layout">
+              <div className="report-form-left">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="emergency-type">
+                    Emergency Type
+                  </label>
+                  <select
+                    id="emergency-type"
+                    className="form-control report-input"
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                  >
+                    <option value="Ambulance">Ambulance - Medical Emergency</option>
+                    <option value="Fire">Fire - Fire/Explosion Emergency</option>
+                    <option value="Police">Police - Security/Crime Emergency</option>
+                  </select>
+                  <div className="form-help">
+                    Select the emergency category to dispatch the correct team immediately.
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="reporter-phone">
+                    Contact Number
+                  </label>
+                  <div className="report-phone-row">
+                    <input
+                      type="text"
+                      className="form-control report-input report-phone-prefix"
+                      value="+91"
+                      readOnly
+                    />
+                    <input
+                      id="reporter-phone"
+                      type="tel"
+                      className="form-control report-input"
+                      value={reporterPhoneLocal}
+                      onChange={(e) => setReporterPhoneLocal(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      placeholder="Enter 10-digit mobile number"
+                      required
+                    />
+                  </div>
+                  <div className="form-help">
+                    Dispatch can call you if rapid verification is needed.
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Emergency Location</label>
+                  <div className="form-help report-location-help">
+                    {position
+                      ? `Selected: ${position[0].toFixed(5)}, ${position[1].toFixed(5)}`
+                      : "Select a point on the map to set the emergency location."}
+                  </div>
+                  {position && (
+                    <div className="report-location-chip">
+                      Location pinned and ready for dispatch.
+                    </div>
+                  )}
+
+                  <div className="btn-group report-location-actions">
+                    <button
+                      type="button"
+                      onClick={handleUseMyLocation}
+                      disabled={locating}
+                      className={`btn btn-outline ${locating ? 'btn-loading' : 'btn-icon'} report-location-btn`}
+                    >
+                      {locating ? (
+                        <>
+                          <div className="spinner"></div>
+                          Detecting Location...
+                        </>
+                      ) : (
+                        <>Use My Location</>
+                      )}
+                    </button>
+
+                    {position && (
+                      <button
+                        type="button"
+                        onClick={() => setPosition(null)}
+                        className="btn btn-outline report-clear-location-btn"
+                      >
+                        Clear Location
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-              
-              {/* Location Actions */}
-              <div className="btn-group" style={{ marginBottom: 'var(--space-4)' }}>
+
+              <div className="report-form-map-panel">
+                <label className="form-label report-map-label">Map View</label>
+                <div className="map-container report-map-container">
+                  <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: "100%", width: "100%" }}>
+                    <MapAutoCenter center={position} />
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    <LocationPicker value={position} onChange={setPosition} />
+                  </MapContainer>
+                </div>
+                <div className="form-help report-map-help">
+                  Click directly on the map to pin the incident location.
+                </div>
+              </div>
+
+              <div className="form-group report-submit-group">
                 <button
-                  type="button"
-                  onClick={handleUseMyLocation}
-                  disabled={locating}
-                  className={`btn btn-outline ${locating ? 'btn-loading' : 'btn-icon'}`}
-                  style={{
-                    borderColor: 'var(--primary-blue)',
-                    color: 'var(--primary-blue)',
-                    fontSize: 'var(--text-sm)'
-                  }}
+                  type="submit"
+                  disabled={!position || isSubmitting}
+                  className={`btn btn-primary btn-lg ${isSubmitting ? 'btn-loading' : 'btn-icon'} report-submit-btn`}
                 >
-                  {locating ? (
+                  {isSubmitting ? (
                     <>
                       <div className="spinner"></div>
-                      Detecting Location...
+                      Reporting Emergency...
                     </>
                   ) : (
-                    <>
-                      📍 Use My Location
-                    </>
+                    <>Report {getEmergencyTypeIcon(type)} Emergency</>
                   )}
                 </button>
-                
-                {position && (
-                  <button
-                    type="button"
-                    onClick={() => setPosition(null)}
-                    className="btn btn-outline"
-                    style={{ color: 'var(--accent-red)' }}
-                  >
-                    🗑️ Clear Location
-                  </button>
+
+                {!position && (
+                  <div className="form-help report-submit-help">
+                    Please select a location on the map to continue.
+                  </div>
                 )}
               </div>
-
-              {/* Map Container */}
-              <div className="map-container" style={{ height: "400px", borderRadius: 'var(--radius-xl)' }}>
-                <MapContainer
-                  center={mapCenter}
-                  zoom={mapZoom}
-                  style={{ height: "100%", width: "100%" }}
-                >
-                  <MapAutoCenter center={position} />
-                  <TileLayer 
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  />
-                  <LocationPicker value={position} onChange={setPosition} />
-                </MapContainer>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <div className="form-group" style={{ marginTop: 'var(--space-8)' }}>
-              <button
-                type="submit"
-                disabled={!position || isSubmitting}
-                className={`btn btn-primary btn-lg ${isSubmitting ? 'btn-loading' : 'btn-icon'}`}
-                style={{
-                  width: '100%',
-                  justifyContent: 'center',
-                  fontSize: 'var(--text-lg)',
-                  padding: 'var(--space-4) var(--space-6)',
-                  background: position ? 
-                    'linear-gradient(135deg, var(--accent-red), var(--accent-red-light))' : 
-                    'var(--gray-400)',
-                  cursor: position ? 'pointer' : 'not-allowed'
-                }}
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="spinner"></div>
-                    Reporting Emergency...
-                  </>
-                ) : (
-                  <>
-                    🚨 Report {getEmergencyTypeIcon(type)} Emergency
-                  </>
-                )}
-              </button>
-              
-              {!position && (
-                <div className="form-help" style={{ textAlign: 'center', marginTop: 'var(--space-2)' }}>
-                  ⚠️ Please select a location on the map to continue
-                </div>
-              )}
-            </div>
-          </form>
-        </div>
-
-        {/* Help Section */}
-        <div className="card" style={{ marginTop: 'var(--space-6)', padding: 'var(--space-6)' }}>
-          <h3 style={{ 
-            fontSize: 'var(--text-lg)', 
-            fontWeight: 'var(--font-semibold)', 
-            margin: '0 0 var(--space-4) 0',
-            color: 'var(--text-primary)'
-          }}>
-            🆘 Emergency Response Information
-          </h3>
-          <div style={{ 
-            display: 'grid', 
-            gap: 'var(--space-4)',
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-secondary)'
-          }}>
-            <div>
-              <strong>Response Time:</strong> Average 8-12 minutes for urban areas
-            </div>
-            <div>
-              <strong>What to Expect:</strong> Our dispatch team will contact you within 2 minutes
-            </div>
-            <div>
-              <strong>Stay Safe:</strong> Move to a safe location if possible while waiting for help
-            </div>
-            <div>
-              <strong>Emergency Hotline:</strong> For immediate assistance, call 911
-            </div>
+            </form>
           </div>
         </div>
 
-        {/* Status Message */}
+        <aside className="report-card report-help-card fade-in">
+          <h3 className="report-help-title">What Happens After You Submit</h3>
+          <div className="report-help-grid">
+            <div><strong>1. Alert Created:</strong> Your report is sent to the live dispatch queue instantly.</div>
+            <div><strong>2. Team Assigned:</strong> Nearest suitable response unit is notified.</div>
+            <div><strong>3. Verification Call:</strong> You may receive a quick callback for details.</div>
+            <div><strong>4. Stay Safe:</strong> Move to a safer nearby area while help is on the way.</div>
+          </div>
+        </aside>
+
         {message && (
-          <div className="fade-in" style={{
-            marginTop: 'var(--space-4)',
-            padding: 'var(--space-4)',
-            borderRadius: 'var(--radius-lg)',
-            backgroundColor: message.includes('successfully') ? 'var(--secondary-green)' : 'var(--accent-red)',
-            color: 'var(--text-inverse)',
-            textAlign: 'center',
-            fontWeight: 'var(--font-medium)'
-          }}>
-            {message}
+          <div className={`fade-in report-status-message ${message.includes('successfully') ? 'success' : 'error'}`}>
+            <div>{message}</div>
             {smsStatus && (
-              <div style={{ marginTop: "8px", fontSize: "0.9rem", fontWeight: 500 }}>
+              <div className="report-status-subtext">
                 {smsStatus}
               </div>
             )}

@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { MapContainer, Marker, Polyline, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { emergencyAPI } from "../api";
+import "../styles/public-emergency-tracking.css";
+import "../styles/map-chrome.css";
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
@@ -45,11 +47,39 @@ function routePointAtProgress(positions, progress) {
   ];
 }
 
+function MapInstanceBinder({ onReady }) {
+  const map = useMap();
+  useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
+  return null;
+}
+
+function MapFollowController({ center, enabled }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!enabled || !center) return;
+    map.flyTo(center, map.getZoom(), { animate: true, duration: 0.8 });
+  }, [enabled, center, map]);
+  return null;
+}
+
+function MapInteractionMonitor({ onUserMapMove }) {
+  useMapEvents({
+    dragstart: () => onUserMapMove(),
+    zoomstart: () => onUserMapMove(),
+  });
+  return null;
+}
+
 export default function PublicEmergencyTracking() {
   const { token } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
+  const [mapType, setMapType] = useState("satellite");
+  const [followLive, setFollowLive] = useState(true);
+  const [mapInstance, setMapInstance] = useState(null);
 
   useEffect(() => {
     let intervalId = null;
@@ -106,42 +136,113 @@ export default function PublicEmergencyTracking() {
     }
     return [19.076, 72.8777];
   }, [unitPoint, emergency]);
+  const tileConfig = mapType === "satellite"
+    ? {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attribution: "Tiles &copy; Esri",
+        subdomains: undefined,
+      }
+    : {
+        url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: "abcd",
+      };
 
-  if (loading) return <div style={{ padding: 24 }}>Loading public tracking...</div>;
-  if (error) return <div style={{ padding: 24, color: "#b91c1c" }}>{error}</div>;
+  const handleRecenter = () => {
+    if (!mapInstance) return;
+    setFollowLive(true);
+    mapInstance.setView(mapCenter, mapInstance.getZoom(), { animate: true });
+  };
+
+  if (loading) {
+    return (
+      <div className="public-track-loading-wrap">
+        <div className="public-track-loading-spinner"></div>
+        <div>Loading public tracking...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="public-track-page">
+        <div className="public-track-shell">
+          <section className="public-track-error-card">
+            <h2>Tracking Unavailable</h2>
+            <p>{error}</p>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1 style={{ marginBottom: 10 }}>Emergency Tracking</h1>
-      <p style={{ marginBottom: 12 }}>
-        Incident #{emergency?.request_id} | Status: <strong>{emergency?.status}</strong>
-      </p>
-      {unit ? (
-        <div style={{ marginBottom: 12 }}>
-          <p style={{ margin: "0 0 6px 0" }}>
-            Assigned Unit: <strong>{unit.unit_vehicle_number}</strong> ({unit.service_type})
-          </p>
-          <p style={{ margin: "0 0 6px 0" }}>
-            Driver: <strong>{driver?.name || "Not available yet"}</strong>
-          </p>
-          <p style={{ margin: 0 }}>
-            Driver Phone:{" "}
-            {driver?.phone ? (
-              <a href={`tel:${driver.phone}`}>{driver.phone}</a>
-            ) : (
-              <strong>Not available yet</strong>
-            )}
-          </p>
-        </div>
-      ) : (
-        <p style={{ marginBottom: 12 }}>No unit assigned yet. Please keep this page open.</p>
-      )}
+    <div className="public-track-page">
+      <div className="public-track-shell">
+        <section className="public-track-hero">
+          <div className="public-track-eyebrow">Live Public View</div>
+          <h1>Emergency Tracking</h1>
+          <p>Follow response progress in real-time and stay updated on assigned unit movement.</p>
+        </section>
 
-      <div style={{ height: 560, borderRadius: 12, overflow: "hidden" }}>
-        <MapContainer center={mapCenter} zoom={14} style={{ height: "100%", width: "100%" }}>
+        <section className="public-track-kpi-row">
+          <article className="public-track-kpi">
+            <span>Incident</span>
+            <strong>#{emergency?.request_id}</strong>
+          </article>
+          <article className="public-track-kpi">
+            <span>Status</span>
+            <strong>{emergency?.status || "Unknown"}</strong>
+          </article>
+          <article className="public-track-kpi">
+            <span>Response Unit</span>
+            <strong>{unit?.unit_vehicle_number || "Pending"} ({unit.service_type})</strong>
+          </article>
+          <article className="public-track-kpi">
+            <span>Driver</span>
+            <strong>{driver?.name || "Not available yet"}</strong>
+          </article>
+
+          <article className="public-track-kpi">
+            <span>Driver Phone</span>
+            <strong>{driver?.phone ? (
+                  <a href={`tel:${driver.phone}`}>{driver.phone}</a>
+                ) : (
+                  <strong>Not available yet</strong>
+                )}</strong>
+          </article>
+        </section>
+
+        {/* <section className="public-track-contact-card">
+          {unit ? (
+            <div className="public-track-contact-grid">
+              <p>
+                <span>Driver</span>
+                <strong>{driver?.name || "Not available yet"}</strong>
+              </p>
+              <p>
+                <span>Driver Phone</span>
+                {driver?.phone ? (
+                  <a href={`tel:${driver.phone}`}>{driver.phone}</a>
+                ) : (
+                  <strong>Not available yet</strong>
+                )}
+              </p>
+            </div>
+          ) : (
+            <p className="public-track-empty-note">No unit assigned yet. Please keep this page open.</p>
+          )}
+        </section> */}
+
+        <section className="public-track-map-shell">
+          <MapContainer center={mapCenter} zoom={14} className="public-track-map">
+            <MapInstanceBinder onReady={setMapInstance} />
+            <MapFollowController center={mapCenter} enabled={followLive} />
+            <MapInteractionMonitor onUserMapMove={() => setFollowLive(false)} />
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url={tileConfig.url}
+            attribution={tileConfig.attribution}
+            {...(tileConfig.subdomains ? { subdomains: tileConfig.subdomains } : {})}
           />
 
           {routePositions.length > 1 && (
@@ -188,6 +289,40 @@ export default function PublicEmergencyTracking() {
             </Marker>
           )}
         </MapContainer>
+
+          <div className="gm-map-type-toggle">
+            <button
+              type="button"
+              onClick={() => setMapType("road")}
+              className={mapType === "road" ? "active" : ""}
+            >
+              Map
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapType("satellite")}
+              className={mapType === "satellite" ? "active" : ""}
+            >
+              Satellite
+            </button>
+          </div>
+
+          <div className="gm-map-controls">
+            <button type="button" className="circle" onClick={handleRecenter}>◎</button>
+            <button
+              type="button"
+              className={`mode-btn ${followLive ? "active" : ""}`}
+              onClick={() => setFollowLive((v) => !v)}
+            >
+              {followLive ? "LIVE" : "PAUSED"}
+            </button>
+            <div className="gm-zoom-box">
+              <button type="button" onClick={() => mapInstance?.zoomIn()}>+</button>
+              <button type="button" onClick={() => mapInstance?.zoomOut()}>-</button>
+            </div>
+          </div>
+
+        </section>
       </div>
     </div>
   );

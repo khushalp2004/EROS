@@ -13,6 +13,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from config import SECRET_KEY
 from utils.validators import validate_phone_number
 from services.sms_service import SMSService
+import math
 
 emergency_bp = Blueprint('emergency_bp', __name__)
 
@@ -65,7 +66,38 @@ def _resolve_unit_driver(unit_id):
 
 @emergency_bp.route('/emergencies', methods=['GET'])
 def get_emergencies():
-    emergencies = Emergency.query.all()
+    page_arg = request.args.get("page")
+    per_page_arg = request.args.get("per_page")
+
+    # Backward compatibility: return full array when pagination is not requested.
+    if page_arg is None and per_page_arg is None:
+        emergencies = Emergency.query.all()
+        output = []
+        for e in emergencies:
+            output.append({
+                'request_id': e.request_id,
+                'emergency_type': e.emergency_type,
+                'latitude': e.latitude,
+                'longitude': e.longitude,
+                'status': e.status,
+                'approved_by': e.approved_by,
+                'assigned_unit': e.assigned_unit,
+                'created_at': e.created_at
+            })
+        return jsonify(output)
+
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per_page", default=10, type=int)
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+
+    query = Emergency.query.order_by(Emergency.request_id.desc())
+    total = query.count()
+    total_pages = max(1, math.ceil(total / per_page)) if total else 1
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
+
+    emergencies = query.offset(offset).limit(per_page).all()
     output = []
     for e in emergencies:
         output.append({
@@ -78,8 +110,16 @@ def get_emergencies():
             'assigned_unit': e.assigned_unit,
             'created_at': e.created_at
         })
-    
-    return jsonify(output)
+
+    return jsonify({
+        "data": output,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_prev": page > 1
+    })
 
 @emergency_bp.route('/emergencies', methods=['POST'])
 @limiter.limit("20 per minute")

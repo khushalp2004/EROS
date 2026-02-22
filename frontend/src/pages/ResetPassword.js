@@ -38,8 +38,8 @@ export default function ResetPassword() {
   };
 
   const handleResetSuccess = () => {
-    // Redirect to login page after successful password reset
-    navigate('/login?passwordReset=true');
+    // Redirect home and auto-open login modal after successful password reset
+    navigate('/?openLogin=true&passwordReset=true');
   };
 
   const handleClose = () => {
@@ -190,78 +190,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'var(--bg-secondary)',
-      padding: 'var(--space-6)'
-    }}>
-      <div style={{
-        backgroundColor: 'var(--bg-primary)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-8)',
-        maxWidth: '500px',
-        width: '100%',
-        textAlign: 'center',
-        boxShadow: 'var(--shadow-xl)',
-        border: '1px solid var(--gray-200)'
-      }}>
-        <div style={{
-          fontSize: 'var(--text-4xl)',
-          marginBottom: 'var(--space-4)'
-        }}>
-          🔒
-        </div>
-        <h1 style={{
-          margin: '0 0 var(--space-2) 0',
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--font-bold)',
-          color: 'var(--text-primary)'
-        }}>
-          Reset Your Password
-        </h1>
-        <p style={{
-          margin: '0 0 var(--space-6) 0',
-          color: 'var(--text-muted)',
-          fontSize: 'var(--text-base)',
-          lineHeight: 1.5
-        }}>
-          Please enter your new password below. Make sure it meets all security requirements.
-        </p>
-        
-        <button
-          onClick={() => setShowModal(true)}
-          style={{
-            padding: 'var(--space-3) var(--space-6)',
-            border: '1px solid var(--primary-blue)',
-            borderRadius: 'var(--radius-md)',
-            backgroundColor: 'var(--primary-blue)',
-            color: 'var(--text-inverse)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 'var(--font-medium)',
-            cursor: 'pointer',
-            transition: 'all var(--transition-fast)'
-          }}
-        >
-          Open Reset Form
-        </button>
-
-        <div style={{
-          marginTop: 'var(--space-6)',
-          padding: 'var(--space-4)',
-          backgroundColor: 'var(--info-bg)',
-          color: 'var(--info-text)',
-          borderRadius: 'var(--radius-md)',
-          fontSize: 'var(--text-sm)'
-        }}>
-          <strong>🔐 Security Note:</strong><br />
-          This password reset link will expire after use or after 1 hour, whichever comes first.
-        </div>
-      </div>
-
-      {/* Reset Password Modal */}
+    <div style={{ minHeight: 'calc(100vh - 220px)' }}>
       <ResetPasswordModal 
         isOpen={showModal}
         token={token}

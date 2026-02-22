@@ -1,0 +1,123 @@
+.breadcrumbs-nav {
+  padding: 14px 24px 10px;
+}
+
+.breadcrumbs-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.94));
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  padding: 10px 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.breadcrumbs-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(37, 99, 235, 0.08), transparent 26%),
+    linear-gradient(270deg, rgba(14, 165, 233, 0.08), transparent 24%);
+}
+
+.breadcrumbs-list {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: wrap;
+}
+
+.breadcrumbs-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.breadcrumbs-separator {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.breadcrumbs-link,
+.breadcrumbs-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.breadcrumbs-link {
+  color: #334155;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: all 160ms ease;
+}
+
+.breadcrumbs-link:hover {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.16);
+}
+
+.breadcrumbs-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.24);
+}
+
+.breadcrumbs-home-link {
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.breadcrumbs-home-link:hover {
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.3);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.breadcrumbs-current {
+  color: #0b3b8d;
+  border: 1px solid rgba(37, 99, 235, 0.26);
+  background: linear-gradient(135deg, rgba(219, 234, 254, 0.95), rgba(239, 246, 255, 0.95));
+}
+
+.breadcrumbs-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+@media (max-width: 768px) {
+  .breadcrumbs-nav {
+    padding: 10px 16px 8px;
+  }
+
+  .breadcrumbs-shell {
+    border-radius: 12px;
+    padding: 8px 10px;
+  }
+
+  .breadcrumbs-link,
+  .breadcrumbs-current {
+    min-height: 26px;
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+}

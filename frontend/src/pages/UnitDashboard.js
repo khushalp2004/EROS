@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { unitTaskAPI } from '../api';
+import Breadcrumbs from '../components/Breadcrumbs';
 import { useWebSocketManager } from '../hooks/useWebSocketManager';
 import backendRouteManager from '../utils/BackendRouteManager';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import '../styles/unit-dashboard.css';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -135,7 +137,7 @@ export default function UnitDashboard() {
   const [error, setError] = useState('');
   const [mapInstance, setMapInstance] = useState(null);
   const [followLive, setFollowLive] = useState(true);
-  const [mapType, setMapType] = useState('road');
+  const [mapType, setMapType] = useState('satellite');
   const [drivingMode, setDrivingMode] = useState(false);
   const hasInitializedAssignmentRef = useRef(false);
   const lastAssignedRequestIdRef = useRef(null);
@@ -212,10 +214,18 @@ export default function UnitDashboard() {
   }, [assignedEmergency?.request_id]);
 
   const handleCompleteTask = async () => {
-    if (!assignedEmergency?.request_id) return;
+    const emergencyId = Number(assignedEmergency?.request_id);
+    if (!Number.isInteger(emergencyId) || emergencyId <= 0) {
+      const msg = 'Invalid emergency id. Refresh and try again.';
+      setError(msg);
+      if (window.showErrorToast) {
+        window.showErrorToast(msg);
+      }
+      return;
+    }
     try {
       setSubmitting(true);
-      await unitTaskAPI.completeMyEmergency(assignedEmergency.request_id);
+      await unitTaskAPI.completeMyEmergency(emergencyId);
       if (window.showSuccessToast) {
         window.showSuccessToast('Task completed. Unit is now available.');
       }
@@ -312,235 +322,196 @@ export default function UnitDashboard() {
   const zoomOut = () => mapInstance?.zoomOut();
 
   if (loading) {
-    return <div style={{ padding: '24px' }}>Loading unit dashboard...</div>;
+    return (
+      <div className="unit-loading-wrap">
+        <div className="unit-loading-spinner"></div>
+        <div>Loading unit dashboard...</div>
+      </div>
+    );
   }
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h1 style={{ marginBottom: '12px' }}>Unit Dashboard</h1>
+    <div className="dashboard-container unit-dashboard-page">
+      <Breadcrumbs />
+      <div className="dashboard-main unit-dashboard-shell">
+        <section className="unit-hero-card">
+          <div className="unit-hero-eyebrow">Field Operations</div>
+          <h1 className="unit-hero-title">Unit Command Console</h1>
+          <p className="unit-hero-subtitle">
+            Real-time routing, live telemetry, and task completion for your assigned emergency response.
+          </p>
+        </section>
 
-      <div style={{ marginBottom: '16px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-        {unit && (
-          <div>
-            <strong>Unit:</strong> {unit.unit_vehicle_number} ({unit.service_type}) | <strong>Status:</strong> {realtimeUnitLocation?.status || unit.status}
-          </div>
-        )}
-        <div>
-          <strong>Socket:</strong> {isConnected ? 'LIVE' : 'OFFLINE'}
-          {!isConnected && (
-            <button
-              onClick={reconnect}
-              style={{ marginLeft: '8px', padding: '4px 8px', cursor: 'pointer' }}
-            >
-              Reconnect
-            </button>
+        <section className="unit-status-row">
+          {unit && (
+            <article className="unit-status-card">
+              <div className="unit-status-label">Unit</div>
+              <div className="unit-status-value">{unit.unit_vehicle_number}</div>
+              <div className="unit-status-sub">{unit.service_type}</div>
+            </article>
           )}
-        </div>
-      </div>
+          <article className="unit-status-card">
+            <div className="unit-status-label">Status</div>
+            <div className="unit-status-value">{realtimeUnitLocation?.status || unit?.status || 'Unknown'}</div>
+            <div className={`unit-status-sub ${isConnected ? 'live' : 'offline'}`}>
+              Socket {isConnected ? 'LIVE' : 'OFFLINE'}
+            </div>
+          </article>
+          {!isConnected && (
+            <article className="unit-status-card action">
+              <div className="unit-status-label">Connection</div>
+              <button onClick={reconnect} className="unit-inline-btn">Reconnect</button>
+            </article>
+          )}
+        </section>
 
-      {error && (
-        <div style={{ marginBottom: '16px', color: '#b91c1c' }}>{error}</div>
-      )}
+        {error && (
+          <div className="unit-alert-error">{error}</div>
+        )}
 
-      {!assignedEmergency ? (
-        <div>No active assigned emergency.</div>
-      ) : (
-        <div>
-          <h3>Assigned Emergency #{assignedEmergency.request_id}</h3>
-          <p>Type: {assignedEmergency.emergency_type}</p>
-          <p>Location: {assignedEmergency.latitude}, {assignedEmergency.longitude}</p>
-          <p>Status: {assignedEmergency.status}</p>
+        {!assignedEmergency ? (
+          <section className="unit-empty-state">No active assigned emergency.</section>
+        ) : (
+          <section className="unit-main-card">
+            <div className="unit-emergency-head">
+              <h3>Assigned Emergency #{assignedEmergency.request_id}</h3>
+              <div className="unit-emergency-chip">{assignedEmergency.status}</div>
+            </div>
 
-          <div style={{ height: '520px', marginBottom: '16px', borderRadius: '12px', overflow: 'hidden', position: 'relative' }}>
-            <MapContainer
-              center={liveUnitPoint || mapCenter}
-              zoom={drivingMode ? 17 : 14}
-              style={{ height: '100%', width: '100%' }}
-              zoomControl={false}
-            >
-              <MapInstanceBinder onReady={setMapInstance} />
-              <MapFollowController
+            <div className="unit-emergency-meta">
+              <div>
+                <span>Type</span>
+                <strong>{assignedEmergency.emergency_type}</strong>
+              </div>
+              <div>
+                <span>Location</span>
+                <strong>{assignedEmergency.latitude}, {assignedEmergency.longitude}</strong>
+              </div>
+            </div>
+
+            <div className="unit-map-shell">
+              <MapContainer
                 center={liveUnitPoint || mapCenter}
-                enabled={followLive}
-                drivingMode={drivingMode}
-                heading={heading}
-              />
-              <MapInteractionMonitor onUserMapMove={() => setFollowLive(false)} />
-              <TileLayer
-                url={tileConfig.url}
-                attribution={tileConfig.attribution}
-                {...(tileConfig.subdomains ? { subdomains: tileConfig.subdomains } : {})}
-              />
-
-              {routePositions.length > 1 && (
-                <Polyline
-                  positions={routePositions}
-                  pathOptions={{ color: getServiceColor(unit?.service_type), weight: 6, opacity: 0.95 }}
+                zoom={drivingMode ? 17 : 14}
+                className="unit-map-canvas"
+                zoomControl={false}
+              >
+                <MapInstanceBinder onReady={setMapInstance} />
+                <MapFollowController
+                  center={liveUnitPoint || mapCenter}
+                  enabled={followLive}
+                  drivingMode={drivingMode}
+                  heading={heading}
                 />
-              )}
+                <MapInteractionMonitor onUserMapMove={() => setFollowLive(false)} />
+                <TileLayer
+                  url={tileConfig.url}
+                  attribution={tileConfig.attribution}
+                  {...(tileConfig.subdomains ? { subdomains: tileConfig.subdomains } : {})}
+                />
 
-              {assignedEmergency?.latitude != null && assignedEmergency?.longitude != null && (
-                <Marker position={[assignedEmergency.latitude, assignedEmergency.longitude]}>
-                  <Popup>
-                    <strong>Emergency #{assignedEmergency.request_id}</strong><br />
-                    {assignedEmergency.emergency_type}
-                  </Popup>
-                </Marker>
-              )}
+                {routePositions.length > 1 && (
+                  <Polyline
+                    positions={routePositions}
+                    pathOptions={{ color: getServiceColor(unit?.service_type), weight: 6, opacity: 0.95 }}
+                  />
+                )}
 
-              {liveUnitPoint && (
-                <Marker
-                  position={liveUnitPoint}
-                  zIndexOffset={1000}
-                  icon={L.divIcon({
-                    className: 'unit-live-marker',
-                    html: `
-                      <div style="
-                        width:36px;height:36px;border-radius:50%;
-                        background:${getServiceColor(unit?.service_type)};
-                        border:3px solid white;display:flex;align-items:center;justify-content:center;
-                        box-shadow:0 2px 8px rgba(0,0,0,0.35);color:white;font-weight:700;
-                        transform: rotate(${heading.toFixed(1)}deg);
-                      ">
-                        ▲
-                      </div>
-                    `,
-                    iconSize: [36, 36],
-                    iconAnchor: [18, 18],
-                  })}
-                >
-                  <Popup>
-                    <strong>Your Unit</strong><br />
-                    {unit?.unit_vehicle_number} ({unit?.service_type})<br />
-                    Status: {realtimeUnitLocation?.status || unit?.status}<br />
-                    Progress: {(progress * 100).toFixed(1)}%
-                  </Popup>
-                </Marker>
-              )}
-            </MapContainer>
+                {assignedEmergency?.latitude != null && assignedEmergency?.longitude != null && (
+                  <Marker position={[assignedEmergency.latitude, assignedEmergency.longitude]}>
+                    <Popup>
+                      <strong>Emergency #{assignedEmergency.request_id}</strong><br />
+                      {assignedEmergency.emergency_type}
+                    </Popup>
+                  </Marker>
+                )}
 
-            <div style={{
-              position: 'absolute',
-              top: 10,
-              left: 10,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              zIndex: 1000
-            }}>
-              <div style={{ background: '#fff', border: '1px solid #d1d5db', borderRadius: 12, boxShadow: '0 2px 10px rgba(0,0,0,0.15)', padding: 4, display: 'flex', gap: 4 }}>
+                {liveUnitPoint && (
+                  <Marker
+                    position={liveUnitPoint}
+                    zIndexOffset={1000}
+                    icon={L.divIcon({
+                      className: 'unit-live-marker',
+                      html: `
+                        <div style="
+                          width:36px;height:36px;border-radius:50%;
+                          background:${getServiceColor(unit?.service_type)};
+                          border:3px solid white;display:flex;align-items:center;justify-content:center;
+                          box-shadow:0 2px 8px rgba(0,0,0,0.35);color:white;font-weight:700;
+                          transform: rotate(${heading.toFixed(1)}deg);
+                        ">
+                          ▲
+                        </div>
+                      `,
+                      iconSize: [36, 36],
+                      iconAnchor: [18, 18],
+                    })}
+                  >
+                    <Popup>
+                      <strong>Your Unit</strong><br />
+                      {unit?.unit_vehicle_number} ({unit?.service_type})<br />
+                      Status: {realtimeUnitLocation?.status || unit?.status}<br />
+                      Progress: {(progress * 100).toFixed(1)}%
+                    </Popup>
+                  </Marker>
+                )}
+              </MapContainer>
+
+              <div className="unit-map-type-toggle">
                 <button
                   onClick={() => setMapType('road')}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: 8,
-                    border: 'none',
-                    background: mapType === 'road' ? '#111827' : '#f3f4f6',
-                    color: mapType === 'road' ? '#fff' : '#111827',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
+                  className={mapType === 'road' ? 'active' : ''}
                 >
                   Map
                 </button>
                 <button
                   onClick={() => setMapType('satellite')}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: 8,
-                    border: 'none',
-                    background: mapType === 'satellite' ? '#111827' : '#f3f4f6',
-                    color: mapType === 'satellite' ? '#fff' : '#111827',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
+                  className={mapType === 'satellite' ? 'active' : ''}
                 >
                   Satellite
                 </button>
               </div>
-            </div>
 
-            <div style={{
-              position: 'absolute',
-              right: 12,
-              bottom: 12,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-              zIndex: 1000
-            }}>
-              <button onClick={handleRecenter} style={{ width: 44, height: 44, borderRadius: 22, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', fontSize: 18 }}>
-                ◎
-              </button>
-              <button onClick={() => setFollowLive((v) => !v)} style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid #cbd5e1', background: followLive ? '#111827' : '#fff', color: followLive ? '#fff' : '#111827', cursor: 'pointer', fontWeight: 700 }}>
-                {followLive ? 'LIVE' : 'PAUSED'}
-              </button>
-              <button onClick={() => setDrivingMode((v) => !v)} style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid #cbd5e1', background: drivingMode ? '#0f766e' : '#fff', color: drivingMode ? '#fff' : '#111827', cursor: 'pointer', fontWeight: 700 }}>
-                {drivingMode ? 'DRIVING' : 'NORMAL'}
-              </button>
-              <div style={{ background: '#fff', border: '1px solid #d1d5db', borderRadius: 10, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
-                <button onClick={zoomIn} style={{ display: 'block', width: 40, height: 34, border: 'none', borderBottom: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 20 }}>
-                  +
+              <div className="unit-map-controls">
+                <button onClick={handleRecenter} className="circle">◎</button>
+                <button
+                  onClick={() => setFollowLive((v) => !v)}
+                  className={`mode-btn ${followLive ? 'active' : ''}`}
+                >
+                  {followLive ? 'LIVE' : 'PAUSED'}
                 </button>
-                <button onClick={zoomOut} style={{ display: 'block', width: 40, height: 34, border: 'none', background: '#fff', cursor: 'pointer', fontSize: 20 }}>
-                  -
+                <button
+                  onClick={() => setDrivingMode((v) => !v)}
+                  className={`mode-btn ${drivingMode ? 'driving' : ''}`}
+                >
+                  {drivingMode ? 'DRIVING' : 'NORMAL'}
                 </button>
+                <div className="unit-zoom-box">
+                  <button onClick={zoomIn}>+</button>
+                  <button onClick={zoomOut}>-</button>
+                </div>
+              </div>
+
+              <div className="unit-map-kpis">
+                <div><span>Socket</span><strong>{isConnected ? 'LIVE' : 'OFFLINE'}</strong></div>
+                <div><span>Progress</span><strong>{(progress * 100).toFixed(1)}%</strong></div>
+                <div><span>ETA</span><strong>{formatSeconds(etaSeconds)}</strong></div>
+                <div><span>Follow</span><strong>{followLive ? 'ON' : 'OFF'}</strong></div>
+                <div><span>Heading</span><strong>{heading.toFixed(0)}&deg;</strong></div>
+                <div><span>View</span><strong>{drivingMode ? 'DRIVING' : 'NORMAL'}</strong></div>
               </div>
             </div>
 
-            <div style={{
-              position: 'absolute',
-              left: 12,
-              bottom: 12,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(120px, 1fr))',
-              gap: 8,
-              zIndex: 1000,
-              maxWidth: 320
-            }}>
-              <div style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>SOCKET</div>
-                <div style={{ fontWeight: 700 }}>{isConnected ? 'LIVE' : 'OFFLINE'}</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>PROGRESS</div>
-                <div style={{ fontWeight: 700 }}>{(progress * 100).toFixed(1)}%</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>ETA</div>
-                <div style={{ fontWeight: 700 }}>{formatSeconds(etaSeconds)}</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>FOLLOW</div>
-                <div style={{ fontWeight: 700 }}>{followLive ? 'ON' : 'OFF'}</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>HEADING</div>
-                <div style={{ fontWeight: 700 }}>{heading.toFixed(0)}&deg;</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>VIEW</div>
-                <div style={{ fontWeight: 700 }}>{drivingMode ? 'DRIVING' : 'NORMAL'}</div>
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={handleCompleteTask}
-            disabled={submitting}
-            style={{
-              padding: '10px 14px',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: '#16a34a',
-              color: '#fff',
-              cursor: submitting ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {submitting ? 'Completing...' : 'Mark Task Complete'}
-          </button>
-        </div>
-      )}
+            <button
+              onClick={handleCompleteTask}
+              disabled={submitting}
+              className="unit-complete-btn"
+            >
+              {submitting ? 'Completing...' : 'Mark Task Complete'}
+            </button>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

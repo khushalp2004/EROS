@@ -1,5 +1,6 @@
 import re
 import secrets
+import os
 from datetime import datetime, timedelta
 from flask import current_app
 from flask_jwt_extended import create_access_token, create_refresh_token
@@ -88,7 +89,14 @@ class AuthService:
             
             # Verify password
             if not user.check_password(password):
-                user.increment_failed_login()
+                protected_user_id = (os.getenv('NON_DELETABLE_USER_ID') or '').strip()
+                protected_user_email = (os.getenv('NON_DELETABLE_USER_EMAIL') or '').strip().lower()
+                is_protected_account = (
+                    (protected_user_id and str(user.id) == protected_user_id) or
+                    (protected_user_email and (user.email or '').strip().lower() == protected_user_email)
+                )
+                if not is_protected_account:
+                    user.increment_failed_login()
                 return 'invalid_credentials', "Invalid email or password", None
             
             # Check if user is verified

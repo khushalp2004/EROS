@@ -589,10 +589,24 @@ def complete_my_emergency(current_user, emergency_id):
     emergency = Emergency.query.get(emergency_id)
     if not emergency:
         return jsonify({"success": False, "message": "Emergency not found"}), 404
-    if emergency.assigned_unit != unit_id or emergency.status != "ASSIGNED":
+    if emergency.assigned_unit != unit_id:
         return jsonify({
             "success": False,
-            "message": "This emergency is not actively assigned to your unit"
+            "message": "This emergency is not assigned to your unit"
+        }), 400
+
+    # Allow unit completion for all active in-progress states.
+    # Some flows may transition emergency status before unit marks completion.
+    completable_statuses = {"ASSIGNED", "ENROUTE", "ARRIVING", "ARRIVED", "DEPARTED"}
+    if emergency.status == "COMPLETED":
+        return jsonify({
+            "success": True,
+            "message": f"Emergency {emergency.request_id} is already completed."
+        }), 200
+    if emergency.status not in completable_statuses:
+        return jsonify({
+            "success": False,
+            "message": f"Emergency cannot be completed from status '{emergency.status}'."
         }), 400
 
     unit.status = "AVAILABLE"

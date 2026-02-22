@@ -97,6 +97,11 @@ export function AuthProvider({ children }) {
     setIsAuthenticated(false);
     setUser(null);
     setPendingApproval(false);
+
+    // Always return users to home page after logout.
+    if (window.location.pathname !== '/') {
+      window.location.href = '/';
+    }
   };
 
   const value = {

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { authAPI } from '../api';
 import ForgotPasswordModal from './ForgotPasswordModal';
+import '../styles/login-modal.css';
 
 export default function LoginModal({ isOpen, onClose }) {
   const location = useLocation();
@@ -22,6 +23,13 @@ export default function LoginModal({ isOpen, onClose }) {
     if (location.search.includes('verified=true')) {
       setSuccess('Email verified successfully! You can now log in.');
       // Clean up the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (location.search.includes('passwordReset=true')) {
+      setSuccess('Password reset successful! You can now log in.');
+      // Clean up the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (location.search.includes('openLogin=true')) {
+      // Clean up helper query param when no status message is needed.
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [location]);
@@ -114,8 +122,28 @@ export default function LoginModal({ isOpen, onClose }) {
       }
     } catch (err) {
       console.error('Login error:', err);
-      // For network errors, show generic message
-      setError('Network error. Please check your connection and try again.');
+      const responseStatus = err?.response?.status;
+      const responseData = err?.response?.data || {};
+      const responseCode = responseData?.status;
+      const responseMessage = responseData?.message;
+
+      // Handle backend-auth errors first (most common).
+      if (responseStatus === 401 || responseCode === 'invalid_credentials') {
+        setError('Invalid email or password');
+      } else if (responseCode === 'not_verified') {
+        setError('Please verify your email address before logging in.');
+      } else if (responseCode === 'account_locked') {
+        setError('Account is temporarily locked. Please try again later.');
+      } else if (responseCode === 'account_deactivated') {
+        setError('Account is deactivated. Please contact administrator.');
+      } else if (responseMessage) {
+        setError(responseMessage);
+      } else if (!err?.response) {
+        // Truly no response received from server (network/DNS/CORS issues).
+        setError('Network error. Please check your connection and try again.');
+      } else {
+        setError('Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -123,58 +151,36 @@ export default function LoginModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
+  if (showForgotPassword) {
+    return (
+      <ForgotPasswordModal 
+        isOpen={true}
+        onClose={() => setShowForgotPassword(false)}
+        onSwitchToReset={() => {
+          setShowForgotPassword(false);
+          setEmail('');
+          setPassword('');
+        }}
+      />
+    );
+  }
+
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        backgroundColor: 'var(--bg-primary)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-6)',
-        maxWidth: '400px',
-        width: '90%',
-        boxShadow: 'var(--shadow-xl)',
-        border: '1px solid var(--gray-200)'
-      }}>
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{
-            margin: '0 0 var(--space-2) 0',
-            fontSize: 'var(--text-xl)',
-            fontWeight: 'var(--font-bold)',
-            color: 'var(--text-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}>
-            🔐 Admin Login
+    <div className="login-modal-overlay">
+      <div className="login-modal-card" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
+        <div className="login-modal-head">
+          <h2 id="login-modal-title" className="login-modal-title">
+            <span className="login-modal-title-icon" aria-hidden="true">🔐</span>
+            Admin Login
           </h2>
-          <p style={{
-            margin: 0,
-            color: 'var(--text-muted)',
-            fontSize: 'var(--text-sm)'
-          }}>
+          <p className="login-modal-subtitle">
             Please enter your credentials to access the authority dashboard
           </p>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: 'var(--space-2)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-medium)',
-              color: 'var(--text-primary)'
-            }}>
+        <form onSubmit={handleSubmit} className="login-modal-form">
+          <div className="login-modal-field">
+            <label className="login-modal-label">
               Email
             </label>
             <input
@@ -182,72 +188,28 @@ export default function LoginModal({ isOpen, onClose }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email"
-              style={{
-                width: '100%',
-                padding: 'var(--space-3)',
-                border: '1px solid var(--gray-300)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-sm)',
-                backgroundColor: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
-                boxSizing: 'border-box'
-              }}
+              className="login-modal-input"
               required
             />
           </div>
 
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: 'var(--space-2)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-medium)',
-              color: 'var(--text-primary)'
-            }}>
+          <div className="login-modal-field">
+            <label className="login-modal-label">
               Password
             </label>
-            <div style={{
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center'
-            }}>
+            <div className="login-modal-password-wrap">
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-3)',
-                  paddingRight: 'var(--space-10)',
-                  border: '1px solid var(--gray-300)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: 'var(--text-sm)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  boxSizing: 'border-box'
-                }}
+                className="login-modal-input login-modal-password-input"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: 'absolute',
-                  right: 'var(--space-3)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 'var(--space-1)',
-                  color: 'var(--text-muted)',
-                  fontSize: 'var(--text-sm)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'color var(--transition-fast)'
-                }}
-                onMouseOver={(e) => e.target.style.color = 'var(--text-primary)'}
-                onMouseOut={(e) => e.target.style.color = 'var(--text-muted)'}
+                className="login-modal-showpass-btn"
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 title={showPassword ? "Hide password" : "Show password"}
               >
@@ -256,25 +218,11 @@ export default function LoginModal({ isOpen, onClose }) {
             </div>
             
             {/* Forgot Password Link */}
-            <div style={{
-              marginTop: 'var(--space-2)',
-              textAlign: 'right'
-            }}>
+            <div className="login-modal-forgot-row">
               <button
                 type="button"
                 onClick={() => setShowForgotPassword(true)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--primary-blue)',
-                  fontSize: 'var(--text-sm)',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  padding: 0,
-                  transition: 'color var(--transition-fast)'
-                }}
-                onMouseOver={(e) => e.target.style.color = 'var(--primary-blue-dark)'}
-                onMouseOut={(e) => e.target.style.color = 'var(--primary-blue)'}
+                className="login-modal-forgot-btn"
               >
                 Forgot Password?
               </button>
@@ -282,89 +230,36 @@ export default function LoginModal({ isOpen, onClose }) {
           </div>
 
           {success && (
-            <div style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3)',
-              backgroundColor: 'var(--success-bg)',
-              color: 'var(--success-text)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)'
-            }}>
+            <div className="login-modal-alert success" role="status">
               {success}
             </div>
           )}
 
           {error && (
-            <div style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3)',
-              backgroundColor: 'var(--error-bg)',
-              color: 'var(--error-text)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)'
-            }}>
+            <div className="login-modal-alert error" role="alert">
               {error}
             </div>
           )}
 
           {redirecting && (
-            <div style={{
-              marginBottom: 'var(--space-4)',
-              padding: 'var(--space-3)',
-              backgroundColor: 'var(--info-bg)',
-              color: 'var(--info-text)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}>
-              <div style={{
-                width: '16px',
-                height: '16px',
-                border: '2px solid var(--info-text)',
-                borderTop: '2px solid transparent',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite'
-              }}></div>
+            <div className="login-modal-alert info login-modal-redirecting">
+              <div className="login-modal-spinner"></div>
               Redirecting to your dashboard...
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          <div className="login-modal-actions">
             <button
               type="button"
               onClick={onClose}
-              style={{
-                flex: 1,
-                padding: 'var(--space-3)',
-                border: '1px solid var(--gray-300)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'var(--bg-primary)',
-                color: 'var(--text-secondary)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--font-medium)',
-                cursor: 'pointer',
-                transition: 'all var(--transition-fast)'
-              }}
+              className="login-modal-btn secondary"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || redirecting}
-              style={{
-                flex: 1,
-                padding: 'var(--space-3)',
-                border: '1px solid var(--primary-blue)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: (loading || redirecting) ? 'var(--gray-300)' : 'var(--primary-blue)',
-                color: 'var(--text-inverse)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--font-medium)',
-                cursor: (loading || redirecting) ? 'not-allowed' : 'pointer',
-                transition: 'all var(--transition-fast)'
-              }}
+              className="login-modal-btn primary"
             >
               {loading ? 'Logging in...' : redirecting ? 'Redirecting...' : 'Login'}
             </button>
@@ -372,17 +267,6 @@ export default function LoginModal({ isOpen, onClose }) {
         </form>
       </div>
       
-      {/* Forgot Password Modal */}
-      <ForgotPasswordModal 
-        isOpen={showForgotPassword}
-        onClose={() => setShowForgotPassword(false)}
-        onSwitchToReset={() => {
-          setShowForgotPassword(false);
-          setEmail('');
-          setPassword('');
-        }}
-      />
     </div>
   );
 }
-// make this login modal better

@@ -50,11 +50,12 @@
 
 
 import os
-from flask import Flask
+from datetime import datetime
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SECRET_KEY
-from models import db
+from models import db, User
 from extensions import limiter
 from routes.unit_routes import unit_bp
 from routes.authority_routes import authority_bp
@@ -104,6 +105,39 @@ app.config["RATELIMIT_HEADERS_ENABLED"] = True
 db.init_app(app)
 jwt = JWTManager(app)
 limiter.init_app(app)
+
+@jwt.token_in_blocklist_loader
+def invalidate_token_for_locked_or_inactive(jwt_header, jwt_payload):
+    """
+    Force logout when account is deactivated or locked.
+    This makes currently logged-in users lose session on their next API request.
+    """
+    try:
+        user_id = jwt_payload.get("sub")
+        if not user_id:
+            return True
+
+        user = User.query.get(int(user_id))
+        if not user:
+            return True
+
+        if not user.is_active:
+            return True
+
+        if user.locked_until and user.locked_until > datetime.utcnow():
+            return True
+
+        return False
+    except Exception:
+        return True
+
+@jwt.revoked_token_loader
+def revoked_token_response(jwt_header, jwt_payload):
+    return jsonify({
+        "success": False,
+        "message": "Session invalidated. Please log in again.",
+        "code": "SESSION_INVALIDATED"
+    }), 401
 
 # Initialize WebSocket
 socketio = init_websocket(app)

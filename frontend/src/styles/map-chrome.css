@@ -1,0 +1,364 @@
+.gm-map-shell {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  --gm-chip-bg: rgba(255, 255, 255, 0.9);
+  --gm-chip-border: rgba(203, 213, 225, 0.92);
+  --gm-chip-shadow: 0 2px 10px rgba(15, 23, 42, 0.14);
+}
+
+.gm-map-shell .leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #e5e7eb;
+}
+
+.gm-map-type-toggle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--gm-chip-border);
+  background: var(--gm-chip-bg);
+  box-shadow: var(--gm-chip-shadow);
+  backdrop-filter: blur(4px);
+}
+
+.gm-map-type-toggle button {
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gm-map-type-toggle button.active {
+  background: #0f172a;
+  color: #fff;
+}
+
+.gm-map-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
+
+.gm-map-controls .circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.gm-map-controls .mode-btn {
+  min-width: 82px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.gm-map-controls .mode-btn.active {
+  background: #0f172a;
+  color: #fff;
+}
+
+.gm-zoom-box {
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.gm-zoom-box button {
+  width: 36px;
+  height: 30px;
+  border: none;
+  background: #fff;
+  color: #0f172a;
+  font-size: 18px;
+  cursor: pointer;
+  display: block;
+}
+
+.gm-zoom-box button:first-child {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.gm-map-kpis {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 1000;
+  width: min(300px, calc(100% - 24px));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.gm-map-kpis > div {
+  min-height: 38px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: var(--gm-chip-bg);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(4px);
+  overflow: hidden;
+}
+
+.gm-map-kpis span {
+  display: block;
+  color: #6b7280;
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.gm-map-kpis strong {
+  color: #0f172a;
+  font-size: 0.74rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.gm-empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 18px;
+  border-radius: 10px;
+  text-align: center;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+}
+
+.gm-empty-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.gm-empty-text {
+  font-size: 14px;
+  color: #666;
+}
+
+@media (max-width: 900px) {
+  .gm-map-kpis {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .gm-map-kpis > div {
+    min-height: 34px;
+    padding: 4px 6px;
+  }
+
+  .gm-map-kpis span {
+    font-size: 0.52rem;
+  }
+
+  .gm-map-kpis strong {
+    font-size: 0.68rem;
+  }
+
+  .gm-map-controls {
+    right: 10px;
+    bottom: 56px;
+  }
+}
+
+@media (max-width: 760px) {
+  .gm-map-controls {
+    flex-wrap: nowrap;
+    gap: 5px;
+    max-width: calc(100% - 20px);
+  }
+
+  .gm-map-kpis {
+    max-width: none;
+    right: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .gm-map-kpis > div {
+    min-height: 36px;
+  }
+
+  .gm-map-kpis span {
+    font-size: 0.54rem;
+  }
+
+  .gm-map-kpis strong {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .gm-map-type-toggle {
+    top: 8px;
+    left: 8px;
+  }
+
+  .gm-map-type-toggle button {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 0.74rem;
+  }
+
+  .gm-map-kpis {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 4px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .gm-map-kpis::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gm-map-kpis > div {
+    flex: 0 0 88px;
+    min-height: 32px;
+    padding: 4px 6px;
+  }
+
+  .gm-map-controls {
+    right: 8px;
+    bottom: 48px;
+    max-width: calc(100% - 16px);
+  }
+
+  .gm-map-controls .circle {
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+  }
+
+  .gm-map-controls .mode-btn {
+    min-width: 64px;
+    height: 32px;
+    font-size: 0.64rem;
+    padding: 0 7px;
+  }
+
+  .gm-zoom-box button {
+    width: 32px;
+    height: 28px;
+    font-size: 16px;
+  }
+
+  .gm-map-kpis span {
+    font-size: 0.5rem;
+  }
+
+  .gm-map-kpis strong {
+    font-size: 0.64rem;
+  }
+}
+
+@media (max-height: 680px) and (max-width: 920px) {
+  .gm-map-controls {
+    bottom: 70px;
+  }
+
+  .gm-map-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .gm-map-controls {
+    bottom: 46px;
+    gap: 4px;
+    max-width: calc(100% - 12px);
+  }
+
+  .gm-map-controls .circle {
+    width: 30px;
+    height: 30px;
+    font-size: 13px;
+  }
+
+  .gm-map-controls .mode-btn {
+    min-width: 58px;
+    height: 30px;
+    font-size: 0.58rem;
+    padding: 0 6px;
+  }
+
+  .gm-zoom-box button {
+    width: 28px;
+    height: 26px;
+    font-size: 14px;
+  }
+
+  .gm-map-kpis {
+    gap: 4px;
+  }
+
+  .gm-map-kpis > div {
+    flex: 0 0 82px;
+    min-height: 30px;
+    padding: 4px 5px;
+  }
+
+  .gm-map-kpis span {
+    font-size: 0.48rem;
+  }
+
+  .gm-map-kpis strong {
+    font-size: 0.6rem;
+  }
+}

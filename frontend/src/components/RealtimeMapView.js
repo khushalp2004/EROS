@@ -1,8 +1,9 @@
 import React from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "../styles/route-animations.css";
+import "../styles/map-chrome.css";
 import { useRealtimeUnitMarkers } from "../hooks/useWebSocketManager";
 
 // Fix missing marker icons when using bundlers (CRA/Vite)
@@ -249,6 +250,31 @@ function MapAutoCenter({ center }) {
       map.setView(center, map.getZoom(), { animate: true });
     }
   }, [center, map]);
+  return null;
+}
+
+function MapInstanceBinder({ onReady }) {
+  const map = useMap();
+  React.useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
+  return null;
+}
+
+function MapFollowController({ center, enabled }) {
+  const map = useMap();
+  React.useEffect(() => {
+    if (!enabled || !center) return;
+    map.flyTo(center, map.getZoom(), { animate: true, duration: 0.8 });
+  }, [enabled, center, map]);
+  return null;
+}
+
+function MapInteractionMonitor({ onUserMapMove }) {
+  useMapEvents({
+    dragstart: () => onUserMapMove(),
+    zoomstart: () => onUserMapMove(),
+  });
   return null;
 }
 
@@ -505,6 +531,10 @@ function MapView({
     ? [markers[0].latitude, markers[0].longitude]
     : defaultCenter);
   const mapZoom = zoom || (markers.length === 1 ? 14 : 12);
+  const [mapType, setMapType] = React.useState("satellite");
+  const [followLive, setFollowLive] = React.useState(true);
+  const [mapInstance, setMapInstance] = React.useState(null);
+  const centerKey = Array.isArray(center) ? `${center[0]}:${center[1]}` : "none";
 
   // Helper function to calculate approximate progress based on position - MOVED HERE TO FIX INITIALIZATION
   const calculateApproximateProgress = (routePositions, currentPosition) => {
@@ -535,6 +565,12 @@ function MapView({
   // Use real-time unit data if enabled
   const realtimeData = useRealtimeUnitMarkers(markers);
   const finalMarkers = showRealtimeData ? realtimeData.markers : markers;
+  const followCenter = React.useMemo(() => {
+    if (center) return center;
+    const realtimeMarker = finalMarkers.find((m) => m.isRealtime && m.latitude != null && m.longitude != null);
+    if (realtimeMarker) return [realtimeMarker.latitude, realtimeMarker.longitude];
+    return mapCenter;
+  }, [center, finalMarkers, mapCenter]);
 
   // Handle map click for location selection
   const handleMapClick = (e) => {
@@ -594,9 +630,57 @@ function MapView({
 
   // Always render the map, even with no markers (for selection mode)
   const shouldShowEmptyMessage = !finalMarkers || finalMarkers.length === 0;
+  const tileConfig = mapType === "satellite"
+    ? {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attribution: "Tiles &copy; Esri",
+        subdomains: undefined,
+      }
+    : {
+        url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: "abcd",
+      };
+
+  const handleRecenter = () => {
+    if (!mapInstance) return;
+    setFollowLive(true);
+    mapInstance.setView(followCenter, mapInstance.getZoom(), { animate: true });
+  };
+
+  // Leaflet can render blank strips if container dimensions change after mount.
+  // Force size recalculation on key layout/data changes.
+  React.useEffect(() => {
+    if (!mapInstance) return;
+
+    let cancelled = false;
+    const refreshSize = () => {
+      if (cancelled) return;
+      try {
+        const container = mapInstance.getContainer?.();
+        // Guard against transient states during remount/unmount where Leaflet internals are unavailable.
+        if (!container || !container.isConnected || !mapInstance._loaded || !mapInstance._mapPane) return;
+        mapInstance.invalidateSize({ animate: false, pan: false });
+      } catch (_) {
+        // Ignore transient map lifecycle errors.
+      }
+    };
+
+    refreshSize();
+    const t1 = window.setTimeout(refreshSize, 120);
+    const t2 = window.setTimeout(refreshSize, 320);
+    window.addEventListener("resize", refreshSize);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("resize", refreshSize);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [mapInstance, height, centerKey, finalMarkers.length, enhancedPolylines.length]);
 
   return (
-    <>
+    <div className="gm-map-shell" style={{ height }}>
       <style>
         {`
           @keyframes pulse {
@@ -668,12 +752,17 @@ function MapView({
         key={`${mapCenter[0]}-${mapCenter[1]}-${mapZoom}-${finalMarkers.length}`}
         center={mapCenter}
         zoom={mapZoom}
-        style={{ height }}
+        style={{ height: "100%", width: "100%" }}
         {...mapContainerProps}
       >
+        <MapInstanceBinder onReady={setMapInstance} />
+        <MapFollowController center={followCenter} enabled={followLive} />
+        <MapInteractionMonitor onUserMapMove={() => setFollowLive(false)} />
         {center && <MapAutoCenter center={center} />}
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url={tileConfig.url}
+          attribution={tileConfig.attribution}
+          {...(tileConfig.subdomains ? { subdomains: tileConfig.subdomains } : {})}
         />
         {/* Show regular unit markers based on toggle - hide during route simulation unless specifically enabled */}
         {(!polylines || polylines.length === 0 || showUnitMarkers) ? finalMarkers.map((m, i) => {
@@ -878,47 +967,55 @@ function MapView({
         ))}
       </MapContainer>
       
-      {/* Real-time status indicator */}
-      {showRealtimeData && (
-        <div style={{
-          position: 'absolute',
-          top: '10px',
-          right: '10px',
-          background: realtimeData.isConnected ? '#00ff00' : '#ff4444',
-          color: 'white',
-          padding: '5px 10px',
-          borderRadius: '15px',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          zIndex: 1000,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-        }}>
-          {realtimeData.isConnected ? '🔴 LIVE' : '⚫ OFFLINE'}
+      <div className="gm-map-type-toggle">
+        <button
+          type="button"
+          onClick={() => setMapType("road")}
+          className={mapType === "road" ? "active" : ""}
+        >
+          Map
+        </button>
+        <button
+          type="button"
+          onClick={() => setMapType("satellite")}
+          className={mapType === "satellite" ? "active" : ""}
+        >
+          Satellite
+        </button>
+      </div>
+
+      <div className="gm-map-controls">
+        <button type="button" className="circle" onClick={handleRecenter}>◎</button>
+        <button
+          type="button"
+          className={`mode-btn ${followLive ? "active" : ""}`}
+          onClick={() => setFollowLive((v) => !v)}
+        >
+          {followLive ? "LIVE" : "PAUSED"}
+        </button>
+        <div className="gm-zoom-box">
+          <button type="button" onClick={() => mapInstance?.zoomIn()}>+</button>
+          <button type="button" onClick={() => mapInstance?.zoomOut()}>-</button>
         </div>
-      )}
+      </div>
+
+      <div className="gm-map-kpis">
+        <div><span>Socket</span><strong>{realtimeData.isConnected ? "LIVE" : "OFFLINE"}</strong></div>
+        <div><span>Markers</span><strong>{finalMarkers.length}</strong></div>
+        <div><span>Routes</span><strong>{enhancedPolylines.length}</strong></div>
+        <div><span>Follow</span><strong>{followLive ? "ON" : "OFF"}</strong></div>
+      </div>
       
       {/* Empty state message for non-selection mode */}
       {shouldShowEmptyMessage && !selectionMode && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          padding: '20px',
-          borderRadius: '8px',
-          textAlign: 'center',
-          border: '1px solid #ddd',
-          boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-          zIndex: 1000
-        }}>
-          <div style={{ fontSize: '24px', marginBottom: '8px' }}>📍</div>
-          <div style={{ fontSize: '14px', color: '#666' }}>
+        <div className="gm-empty-state">
+          <div className="gm-empty-icon">📍</div>
+          <div className="gm-empty-text">
             No locations to display
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

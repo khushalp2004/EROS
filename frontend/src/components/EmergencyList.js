@@ -1,14 +1,5 @@
 import React from "react";
-import { 
-  isEmergency, 
-  isUnit, 
-  getAssignedUnit, 
-  getUnitId, 
-  safeGet, 
-  validateEmergency,
-  validateUnit,
-  logDataError
-} from "../utils/DataValidationUtils";
+import { getAssignedUnit } from "../utils/DataValidationUtils";
 
 function EmergencyList({
   emergencies = [],
@@ -19,24 +10,20 @@ function EmergencyList({
   onComplete,
   availableByType = {},
 }) {
+  const normalizeEmergencyType = (type) => String(type || "").toUpperCase();
+
   const getEmergencyTypeIcon = (type) => {
-    switch (type?.toLowerCase()) {
-      case 'ambulance': return '';
-      case 'fire': return '';
-      case 'police': return '';
-      default: return '🚨';
+    switch (normalizeEmergencyType(type)) {
+      case "AMBULANCE": return "🚑";
+      case "FIRE_TRUCK": return "🚒";
+      case "POLICE": return "🚓";
+      default: return "🚨";
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status?.toUpperCase()) {
-      case 'PENDING': return 'var(--status-pending)';
-      case 'APPROVED': return 'var(--primary-blue)';
-      case 'ASSIGNED': return 'var(--status-assigned)';
-      case 'COMPLETED': return 'var(--status-completed)';
-      default: return 'var(--gray-600)';
-    }
-  };
+  const getEmergencyTypeClass = (type) => `emergency-type-${normalizeEmergencyType(type).toLowerCase().replaceAll("_", "-")}`;
+  const getEmergencyStatusClass = (status) => `emergency-status-${String(status || "unknown").toLowerCase()}`;
+  const formatEmergencyType = (type) => String(type || "UNKNOWN").replaceAll("_", " ");
 
   const formatTime = (timestamp) => {
     if (!timestamp) return '—';
@@ -61,125 +48,85 @@ function EmergencyList({
   }
 
   return (
-    <div className="table-container">
-      <table className="table">
+    <div className="table-container emergency-table-container">
+      <table className="table emergency-table">
         <thead>
           <tr>
-            <th>Request ID</th>
-            <th>Emergency Type</th>
-            <th>Status</th>
-            <th>Location</th>
-            <th>Assigned Unit</th>
-            <th>Approved By</th>
-            <th>Created At</th>
-            <th style={{ textAlign: 'center' }}>Actions</th>
+            <th style={{ width: '12%' }}>Request ID</th>
+            <th style={{ width: '17%', textAlign: 'center' }}>Emergency Type</th>
+            <th style={{ width: '12%', textAlign: 'center' }}>Status</th>
+            <th style={{ width: '17%', textAlign: 'center' }}>Location</th>
+            <th style={{ width: '12%', textAlign: 'center' }}>Assigned Unit</th>
+            <th style={{ width: '13%' }}>Approved By</th>
+            <th style={{ width: '12%', textAlign: 'right' }}>Created At</th>
+            <th style={{ width: '10%', textAlign: 'center' }}>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {emergencies.map((emergency, index) => (
-            <tr
+          {emergencies.map((emergency) => {
+            const normalizedType = normalizeEmergencyType(emergency.emergency_type);
+            const availableForType =
+              availableByType[emergency.emergency_type] ??
+              availableByType[normalizedType] ??
+              0;
+
+            return (
+              <tr
               key={emergency.request_id}
+              className={`emergency-row ${selectedId === emergency.request_id ? "selected" : ""}`}
               onClick={() => {
                 onSelect && onSelect(emergency);
                 if (onCenterMap && emergency.latitude && emergency.longitude) {
                   onCenterMap(emergency.latitude, emergency.longitude);
                 }
               }}
-              style={{
-                cursor: onSelect || onCenterMap ? "pointer" : "default",
-                background: selectedId === emergency.request_id ? "var(--primary-blue-light)" : 
-                           index % 2 === 0 ? "transparent" : "var(--gray-50)",
-                transition: "all var(--transition-fast)"
-              }}
-              onMouseEnter={(e) => {
-                if (selectedId !== emergency.request_id) {
-                  e.target.style.backgroundColor = "var(--gray-100)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (selectedId !== emergency.request_id) {
-                  e.target.style.backgroundColor = index % 2 === 0 ? "transparent" : "var(--gray-50)";
-                }
-              }}
             >
-              <td style={{ fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>
-                #{emergency.request_id}
+              <td className="emergency-id-cell">
+                <span className="emergency-id-chip">🚨 #{emergency.request_id}</span>
               </td>
-              <td>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 'var(--space-2)',
-                  fontWeight: 'var(--font-medium)'
-                }}>
-                  <span style={{ fontSize: 'var(--text-lg)' }}>
+              <td style={{ textAlign: 'center' }}>
+                <span className={`emergency-badge emergency-type ${getEmergencyTypeClass(emergency.emergency_type)}`}>
+                  <span className="emergency-badge-icon">
                     {getEmergencyTypeIcon(emergency.emergency_type)}
                   </span>
-                  <span>{emergency.emergency_type}</span>
-                </div>
+                  {formatEmergencyType(emergency.emergency_type)}
+                </span>
               </td>
-              <td>
-                <span className="badge" style={{ 
-                  backgroundColor: getStatusColor(emergency.status),
-                  color: 'var(--text-inverse)',
-                  fontSize: 'var(--text-xs)',
-                  padding: 'var(--space-1) var(--space-3)'
-                }}>
+              <td style={{ textAlign: 'center' }}>
+                <span className={`emergency-badge emergency-status ${getEmergencyStatusClass(emergency.status)}`}>
                   {emergency.status}
                 </span>
               </td>
-              <td>
-                <div style={{ 
-                  fontFamily: 'var(--font-mono)', 
-                  fontSize: 'var(--text-sm)',
-                  color: 'var(--text-secondary)'
-                }}>
+              <td style={{ textAlign: 'center' }}>
+                <div className="emergency-location-cell">
                   {emergency.latitude?.toFixed(4)}, {emergency.longitude?.toFixed(4)}
                 </div>
               </td>
-              <td>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 'var(--space-1)',
-                  fontWeight: 'var(--font-medium)',
-                  color: getAssignedUnit(emergency) ? 'var(--text-primary)' : 'var(--text-muted)'
-                }}>
+              <td style={{ textAlign: 'center' }}>
+                <div className={`emergency-assigned-cell ${getAssignedUnit(emergency) ? "assigned" : "unassigned"}`}>
                   {getAssignedUnit(emergency) ? (
-                    <>
-                       Unit {getAssignedUnit(emergency)}
-                    </>
+                    <span className="emergency-assigned-chip">Unit {getAssignedUnit(emergency)}</span>
                   ) : (
                     '—'
                   )}
                 </div>
               </td>
               <td>
-                <span style={{ 
-                  color: emergency.approved_by ? 'var(--text-primary)' : 'var(--text-muted)',
-                  fontWeight: emergency.approved_by ? 'var(--font-medium)' : 'var(--font-normal)'
-                }}>
+                <span className={`emergency-approved-cell ${emergency.approved_by ? "has-value" : "empty"}`}>
                   {emergency.approved_by ?? '—'}
                 </span>
               </td>
-              <td style={{ 
-                fontSize: 'var(--text-sm)', 
-                color: 'var(--text-secondary)',
-                whiteSpace: 'nowrap'
-              }}>
+              <td className="emergency-time-cell" style={{ textAlign: 'right' }}>
                 {formatTime(emergency.created_at)}
               </td>
               <td style={{ textAlign: 'center' }}>
-                <div className="btn-group" style={{ 
-                  justifyContent: 'center',
-                  gap: 'var(--space-2)'
-                }}>
+                <div className="btn-group emergency-actions-cell">
                   {emergency.status === "PENDING" && (
                     <button
                       onClick={(event) => {
                         event.stopPropagation();
                         console.log('🟡 Dispatch button clicked for emergency:', emergency.request_id);
-                        console.log('Available units for type:', emergency.emergency_type, availableByType[emergency.emergency_type] || 0);
+                        console.log('Available units for type:', emergency.emergency_type, availableForType);
                         if (onDispatch) {
                           console.log('✅ Calling onDispatch handler...');
                           onDispatch(emergency);
@@ -187,21 +134,12 @@ function EmergencyList({
                           console.error('❌ onDispatch handler is not available!');
                         }
                       }}
-                      disabled={(availableByType[emergency.emergency_type] || 0) === 0}
-                      className="btn btn-success btn-sm"
-                      style={{
-                        padding: 'var(--space-2) var(--space-3)',
-                        fontSize: 'var(--text-xs)',
-                        backgroundColor: (availableByType[emergency.emergency_type] || 0) === 0 ? 
-                          'var(--gray-400)' : 'var(--secondary-green)',
-                        cursor: (availableByType[emergency.emergency_type] || 0) === 0 ? 
-                          'not-allowed' : 'pointer',
-                        opacity: (availableByType[emergency.emergency_type] || 0) === 0 ? 0.6 : 1
-                      }}
+                      disabled={availableForType === 0}
+                      className={`emergency-action-btn approve ${availableForType === 0 ? "disabled" : ""}`}
                     >
-                      {availableByType[emergency.emergency_type] ? 
-                        '✅ Approve & Dispatch' : 
-                        '⏳ No Units Available'
+                      {availableForType ? 
+                        'Approve' : 
+                        'No Unit'
                       }
                     </button>
                   )}
@@ -217,29 +155,21 @@ function EmergencyList({
                           console.error('❌ onComplete handler is not available!');
                         }
                       }}
-                      className="btn btn-primary btn-sm"
-                      style={{
-                        padding: 'var(--space-2) var(--space-3)',
-                        fontSize: 'var(--text-xs)',
-                        backgroundColor: 'var(--primary-blue)'
-                      }}
+                      className="emergency-action-btn complete"
                     >
-                      ✅ Mark Complete
+                      Complete
                     </button>
                   )}
                   {emergency.status !== "PENDING" && emergency.status !== "ASSIGNED" && (
-                    <span style={{ 
-                      color: "var(--text-muted)", 
-                      fontSize: "var(--text-xs)",
-                      fontStyle: 'italic'
-                    }}>
+                    <span className="emergency-action-muted">
                       {emergency.status === 'COMPLETED' ? '✅ Completed' : '—'}
                     </span>
                   )}
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -247,4 +177,3 @@ function EmergencyList({
 }
 
 export default EmergencyList;
-

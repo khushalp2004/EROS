@@ -570,7 +570,37 @@ def complete_emergency(emergency_id):
 @authority_bp.route("/authority/units", methods=["GET"])
 @authority_required()
 def get_units():
-    units = Unit.query.all()
+    page_arg = request.args.get("page")
+    per_page_arg = request.args.get("per_page")
+
+    # Backward compatibility: return full array when pagination is not requested.
+    if page_arg is None and per_page_arg is None:
+        units = Unit.query.all()
+        data = []
+        for u in units:
+            data.append({
+                "unit_id": u.unit_id,
+                "unit_vehicle_number": u.unit_vehicle_number,
+                "service_type": u.service_type,
+                "status": u.status,
+                "latitude": u.latitude,
+                "longitude": u.longitude,
+                "last_updated": u.last_updated
+            })
+        return jsonify(data)
+
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per_page", default=10, type=int)
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+
+    query = Unit.query.order_by(Unit.unit_id.asc())
+    total = query.count()
+    total_pages = max(1, math.ceil(total / per_page)) if total else 1
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
+
+    units = query.offset(offset).limit(per_page).all()
     data = []
     for u in units:
         data.append({
@@ -582,8 +612,16 @@ def get_units():
             "longitude": u.longitude,
             "last_updated": u.last_updated
         })
-    
-    return jsonify(data)
+
+    return jsonify({
+        "data": data,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_prev": page > 1
+    })
 
 # -------------------------
 # Get all emergencies (dashboard view)

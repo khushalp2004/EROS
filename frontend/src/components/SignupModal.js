@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { authAPI } from '../api';
+import '../styles/signup-modal.css';
 
 export default function SignupModal({ isOpen, onClose }) {
   const [formData, setFormData] = useState({
@@ -155,7 +156,7 @@ export default function SignupModal({ isOpen, onClose }) {
       lastName: '',
       phone: '',
       organization: '',
-      role: 'admin'
+      role: 'authority'
     });
     onClose();
   };
@@ -163,139 +164,55 @@ export default function SignupModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        backgroundColor: 'var(--bg-primary)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-6)',
-        maxWidth: '500px',
-        width: '90%',
-        maxHeight: '90vh',
-        overflowY: 'auto',
-        boxShadow: 'var(--shadow-xl)',
-        border: '1px solid var(--gray-200)'
-      }}>
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h2 style={{
-            margin: '0 0 var(--space-2) 0',
-            fontSize: 'var(--text-xl)',
-            fontWeight: 'var(--font-bold)',
-            color: 'var(--text-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}>
-            👤 Admin Signup
+    <div className="signup-modal-overlay">
+      <div className="signup-modal-card" role="dialog" aria-modal="true" aria-labelledby="signup-modal-title">
+        <div className="signup-modal-head">
+          <h2 id="signup-modal-title" className="signup-modal-title">
+            <span className="signup-modal-title-icon" aria-hidden="true">👤</span>
+            Admin Signup
           </h2>
-          <p style={{
-            margin: 0,
-            color: 'var(--text-muted)',
-            fontSize: 'var(--text-sm)'
-          }}>
-            Create an admin account to access the authority dashboard
+          <p className="signup-modal-subtitle">
+            Create an admin account to access the authority dashboard.
           </p>
         </div>
 
         {verificationPending ? (
-          <div>
-            <div style={{
-              padding: 'var(--space-4)',
-              backgroundColor: 'var(--info-bg)',
-              color: 'var(--info-text)',
-              borderRadius: 'var(--radius-md)',
-              textAlign: 'center',
-              marginBottom: 'var(--space-4)'
-            }}>
-              <h3 style={{ margin: '0 0 var(--space-2) 0' }}>📧 Verification Email Sent!</h3>
-              <p style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
+          <div className="signup-modal-verification">
+            <div className="signup-modal-alert info center">
+              <h3 className="signup-modal-block-title">📧 Verification Email Sent!</h3>
+              <p className="signup-modal-block-text">
                 We've sent a verification link to <strong>{formData.email}</strong>. 
                 Please check your email and click the verification link to complete your registration.
               </p>
             </div>
 
             {/* Resend Verification Section */}
-            <div style={{
-              padding: 'var(--space-4)',
-              backgroundColor: 'var(--bg-secondary)',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: 'var(--space-4)'
-            }}>
-              <h4 style={{ 
-                margin: '0 0 var(--space-3) 0',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--font-medium)',
-                color: 'var(--text-primary)'
-              }}>
+            <div className="signup-modal-resend-box">
+              <h4 className="signup-modal-resend-title">
                 Didn't receive the email?
               </h4>
               
               <button
                 onClick={handleResendVerification}
                 disabled={!canResend || resendLoading}
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-3)',
-                  border: '1px solid var(--primary-blue)',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: canResend && !resendLoading ? 'var(--primary-blue)' : 'var(--gray-300)',
-                  color: 'var(--text-inverse)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  cursor: canResend && !resendLoading ? 'pointer' : 'not-allowed',
-                  transition: 'all var(--transition-fast)',
-                  marginBottom: 'var(--space-3)'
-                }}
+                className="signup-modal-btn primary full"
               >
                 {resendLoading ? 'Sending...' : canResend ? 'Resend Verification Email' : `Resend in ${resendCountdown}s`}
               </button>
 
               {resendMessage && (
-                <div style={{
-                  padding: 'var(--space-2)',
-                  backgroundColor: resendMessage.includes('success') ? 'var(--success-bg)' : 'var(--warning-bg)',
-                  color: resendMessage.includes('success') ? 'var(--success-text)' : 'var(--warning-text)',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: 'var(--text-xs)',
-                  textAlign: 'center'
-                }}>
+                <div className={`signup-modal-alert compact ${resendMessage.includes('success') ? 'success' : 'warning'}`}>
                   {resendMessage}
                 </div>
               )}
             </div>
 
             {/* Instructions */}
-            <div style={{
-              padding: 'var(--space-3)',
-              backgroundColor: 'var(--gray-50)',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: 'var(--space-4)'
-            }}>
-              <h4 style={{ 
-                margin: '0 0 var(--space-2) 0',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 'var(--font-medium)',
-                color: 'var(--text-secondary)'
-              }}>
+            <div className="signup-modal-instructions">
+              <h4 className="signup-modal-instructions-title">
                 Instructions:
               </h4>
-              <ul style={{
-                margin: 0,
-                paddingLeft: 'var(--space-4)',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-muted)',
-                lineHeight: 1.4
-              }}>
+              <ul>
                 <li>Check your email inbox (and spam folder)</li>
                 <li>Click the verification link in the email</li>
                 <li>The link expires after 24 hours</li>
@@ -304,53 +221,27 @@ export default function SignupModal({ isOpen, onClose }) {
             </div>
 
             {/* Manual Close Option */}
-            <div style={{ 
-              display: 'flex', 
-              gap: 'var(--space-3)',
-              justifyContent: 'center'
-            }}>
+            <div className="signup-modal-actions center">
               <button
                 onClick={handleCloseModal}
-                style={{
-                  padding: 'var(--space-3) var(--space-6)',
-                  border: '1px solid var(--gray-300)',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-secondary)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  cursor: 'pointer',
-                  transition: 'all var(--transition-fast)'
-                }}
+                className="signup-modal-btn secondary"
               >
                 Close Modal
               </button>
             </div>
           </div>
         ) : success ? (
-          <div style={{
-            padding: 'var(--space-4)',
-            backgroundColor: 'var(--success-bg)',
-            color: 'var(--success-text)',
-            borderRadius: 'var(--radius-md)',
-            textAlign: 'center'
-          }}>
-            <h3 style={{ margin: '0 0 var(--space-2) 0' }}>✅ Signup Successful!</h3>
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
+          <div className="signup-modal-alert success center">
+            <h3 className="signup-modal-block-title">✅ Signup Successful!</h3>
+            <p className="signup-modal-block-text">
               Account created successfully.
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: 'var(--space-2)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)'
-                }}>
+          <form onSubmit={handleSubmit} className="signup-modal-form">
+            <div className="signup-modal-grid two">
+              <div className="signup-modal-field">
+                <label className="signup-modal-label">
                   First Name *
                 </label>
                 <input
@@ -359,28 +250,13 @@ export default function SignupModal({ isOpen, onClose }) {
                   value={formData.firstName}
                   onChange={handleInputChange}
                   placeholder="Enter first name"
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: 'var(--text-sm)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    boxSizing: 'border-box'
-                  }}
+                  className="signup-modal-input"
                   required
                 />
               </div>
 
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: 'var(--space-2)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)'
-                }}>
+              <div className="signup-modal-field">
+                <label className="signup-modal-label">
                   Last Name *
                 </label>
                 <input
@@ -389,29 +265,14 @@ export default function SignupModal({ isOpen, onClose }) {
                   value={formData.lastName}
                   onChange={handleInputChange}
                   placeholder="Enter last name"
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: 'var(--text-sm)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    boxSizing: 'border-box'
-                  }}
+                  className="signup-modal-input"
                   required
                 />
               </div>
             </div>
 
-            <div style={{ marginBottom: 'var(--space-4)' }}>
-              <label style={{
-                display: 'block',
-                marginBottom: 'var(--space-2)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--font-medium)',
-                color: 'var(--text-primary)'
-              }}>
+            <div className="signup-modal-field">
+              <label className="signup-modal-label">
                 Email *
               </label>
               <input
@@ -420,74 +281,30 @@ export default function SignupModal({ isOpen, onClose }) {
                 value={formData.email}
                 onChange={handleInputChange}
                 placeholder="Enter your email"
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-3)',
-                  border: '1px solid var(--gray-300)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: 'var(--text-sm)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  boxSizing: 'border-box'
-                }}
+                className="signup-modal-input"
                 required
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: 'var(--space-2)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)'
-                }}>
+            <div className="signup-modal-grid two">
+              <div className="signup-modal-field">
+                <label className="signup-modal-label">
                   Password *
                 </label>
-                <div style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}>
+                <div className="signup-modal-password-wrap">
                   <input
                     type={showPassword ? "text" : "password"}
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
                     placeholder="Enter password"
-                    style={{
-                      width: '100%',
-                      padding: 'var(--space-3)',
-                      paddingRight: 'var(--space-10)',
-                      border: '1px solid var(--gray-300)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: 'var(--text-sm)',
-                      backgroundColor: 'var(--bg-primary)',
-                      color: 'var(--text-primary)',
-                      boxSizing: 'border-box'
-                    }}
+                    className="signup-modal-input signup-modal-password-input"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    style={{
-                      position: 'absolute',
-                      right: 'var(--space-3)',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: 'var(--space-1)',
-                      color: 'var(--text-muted)',
-                      fontSize: 'var(--text-sm)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'color var(--transition-fast)'
-                    }}
-                    onMouseOver={(e) => e.target.style.color = 'var(--text-primary)'}
-                    onMouseOut={(e) => e.target.style.color = 'var(--text-muted)'}
+                    className="signup-modal-showpass-btn"
                     aria-label={showPassword ? "Hide password" : "Show password"}
                     title={showPassword ? "Hide password" : "Show password"}
                   >
@@ -496,59 +313,24 @@ export default function SignupModal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: 'var(--space-2)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)'
-                }}>
+              <div className="signup-modal-field">
+                <label className="signup-modal-label">
                   Confirm Password *
                 </label>
-                <div style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}>
+                <div className="signup-modal-password-wrap">
                   <input
                     type={showConfirmPassword ? "text" : "password"}
                     name="confirmPassword"
                     value={formData.confirmPassword}
                     onChange={handleInputChange}
                     placeholder="Confirm password"
-                    style={{
-                      width: '100%',
-                      padding: 'var(--space-3)',
-                      paddingRight: 'var(--space-10)',
-                      border: '1px solid var(--gray-300)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: 'var(--text-sm)',
-                      backgroundColor: 'var(--bg-primary)',
-                      color: 'var(--text-primary)',
-                      boxSizing: 'border-box'
-                    }}
+                    className="signup-modal-input signup-modal-password-input"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    style={{
-                      position: 'absolute',
-                      right: 'var(--space-3)',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: 'var(--space-1)',
-                      color: 'var(--text-muted)',
-                      fontSize: 'var(--text-sm)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'color var(--transition-fast)'
-                    }}
-                    onMouseOver={(e) => e.target.style.color = 'var(--text-primary)'}
-                    onMouseOut={(e) => e.target.style.color = 'var(--text-muted)'}
+                    className="signup-modal-showpass-btn"
                     aria-label={showConfirmPassword ? "Hide password" : "Show password"}
                     title={showConfirmPassword ? "Hide password" : "Show password"}
                   >
@@ -558,15 +340,9 @@ export default function SignupModal({ isOpen, onClose }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: 'var(--space-2)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)'
-                }}>
+            <div className="signup-modal-grid two">
+              <div className="signup-modal-field">
+                <label className="signup-modal-label">
                   Phone
                 </label>
                 <input
@@ -575,78 +351,40 @@ export default function SignupModal({ isOpen, onClose }) {
                   value={formData.phone}
                   onChange={handleInputChange}
                   placeholder="Enter phone number"
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: 'var(--text-sm)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    boxSizing: 'border-box'
-                  }}
+                  className="signup-modal-input"
                 />
               </div>
 
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: 'var(--space-2)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)'
-                }}>
-                  Organization
+              <div className="signup-modal-field">
+                <label className="signup-modal-label">
+                  {formData.role === 'unit' ? 'Unit ID' : 'Organization'}
                 </label>
                 <input
                   type="text"
                   name="organization"
                   value={formData.organization}
                   onChange={handleInputChange}
-                  placeholder={formData.role === 'unit' ? "UNIT_ID:<id> (e.g., UNIT_ID:7)" : "Enter organization"}
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: 'var(--text-sm)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    boxSizing: 'border-box'
-                  }}
+                  placeholder={formData.role === 'unit' ? "(e.g., UNIT_ID:7)" : "Enter organization"}
+                  className="signup-modal-input"
                 />
-                {formData.role === 'unit' && (
-                  <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>
-                    For Unit role, enter linked unit in organization as <code>UNIT_ID:&lt;id&gt;</code>.
-                  </div>
-                )}
               </div>
             </div>
 
-            <div style={{ marginBottom: 'var(--space-4)' }}>
-              <label style={{
-                display: 'block',
-                marginBottom: 'var(--space-2)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--font-medium)',
-                color: 'var(--text-primary)'
-              }}>
+            {formData.role === 'unit' && (
+              <div className="signup-modal-note">
+                For Unit role, enter linked unit in organization as <code>UNIT_ID:&lt;id&gt;</code>.
+              </div>
+            )}
+
+            <div className="signup-modal-field">
+              <label className="signup-modal-label">
                 Role
               </label>
               <select
                 name="role"
                 value={formData.role}
                 onChange={handleInputChange}
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-3)',
-                  border: '1px solid var(--gray-300)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: 'var(--text-sm)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  boxSizing: 'border-box'
-                }}
+                className="signup-modal-input"
               >
                 <option value="authority">Authority</option>
                 <option value="admin">Admin</option>
@@ -655,52 +393,23 @@ export default function SignupModal({ isOpen, onClose }) {
             </div>
 
             {error && (
-              <div style={{
-                marginBottom: 'var(--space-4)',
-                padding: 'var(--space-3)',
-                backgroundColor: 'var(--error-bg)',
-                color: 'var(--error-text)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-sm)'
-              }}>
+              <div className="signup-modal-alert error" role="alert">
                 {error}
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            <div className="signup-modal-actions">
               <button
                 type="button"
                 onClick={handleCloseModal}
-                style={{
-                  flex: 1,
-                  padding: 'var(--space-3)',
-                  border: '1px solid var(--gray-300)',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-secondary)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  cursor: 'pointer',
-                  transition: 'all var(--transition-fast)'
-                }}
+                className="signup-modal-btn secondary"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                style={{
-                  flex: 1,
-                  padding: 'var(--space-3)',
-                  border: '1px solid var(--primary-blue)',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: loading ? 'var(--gray-300)' : 'var(--primary-blue)',
-                  color: 'var(--text-inverse)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  transition: 'all var(--transition-fast)'
-                }}
+                className="signup-modal-btn primary"
               >
                 {loading ? 'Creating Account...' : 'Create Account'}
               </button>

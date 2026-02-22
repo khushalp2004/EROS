@@ -33,6 +33,15 @@ def admin_required():
         return decorated_function
     return decorator
 
+def is_protected_account(user):
+    """Check if the user is configured as a protected/non-mutable account."""
+    protected_user_id = (os.getenv('NON_DELETABLE_USER_ID') or '').strip()
+    protected_user_email = (os.getenv('NON_DELETABLE_USER_EMAIL') or '').strip().lower()
+    return (
+        (protected_user_id and str(user.id) == protected_user_id) or
+        (protected_user_email and (user.email or '').strip().lower() == protected_user_email)
+    )
+
 @admin_bp.route('/pending-users', methods=['GET'])
 @admin_required()
 def get_pending_users():
@@ -401,6 +410,12 @@ def reject_user(user_id):
                 'success': False,
                 'message': 'User not found'
             }), 404
+
+        if is_protected_account(user):
+            return jsonify({
+                'success': False,
+                'message': 'This account is protected and cannot be deactivated/rejected'
+            }), 403
         
         data = request.get_json() or {}
         reason = data.get('reason', 'Registration rejected by administrator')
@@ -533,6 +548,12 @@ def update_user_status(user_id):
             }), 400
         
         is_active = data['is_active']
+
+        if not is_active and is_protected_account(user):
+            return jsonify({
+                'success': False,
+                'message': 'This account is protected and cannot be deactivated'
+            }), 403
         
         if is_active:
             # Check if user can be activated
@@ -558,6 +579,71 @@ def update_user_status(user_id):
         return jsonify({
             'success': False,
             'message': f'Failed to update user status: {str(e)}'
+        }), 500
+
+@admin_bp.route('/users/<int:user_id>/lock', methods=['POST'])
+@admin_required()
+def lock_user(user_id):
+    """
+    Lock a user account
+    POST /api/admin/users/<user_id>/lock
+
+    Headers:
+    Authorization: Bearer <admin_access_token>
+
+    Request Body (optional):
+    {
+        "duration_hours": 24
+    }
+
+    Response:
+    {
+        "success": true,
+        "message": "User account locked successfully",
+        "user_id": 1,
+        "locked_until": "2024-01-02T12:00:00"
+    }
+    """
+    try:
+        current_user_id = get_jwt_identity()
+        if user_id == current_user_id:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot lock your own account'
+            }), 400
+
+        user = User.query.get(user_id)
+
+        if not user:
+            return jsonify({
+                'success': False,
+                'message': 'User not found'
+            }), 404
+
+        if is_protected_account(user):
+            return jsonify({
+                'success': False,
+                'message': 'This account is protected and cannot be locked'
+            }), 403
+
+        data = request.get_json() or {}
+        duration_hours = int(data.get('duration_hours', 24))
+        duration_hours = max(1, min(duration_hours, 720))
+
+        user.lock_account(duration_hours=duration_hours)
+        user.save()
+
+        return jsonify({
+            'success': True,
+            'message': 'User account locked successfully',
+            'user_id': user.id,
+            'locked_until': user.locked_until.isoformat() if user.locked_until else None
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Failed to lock user account: {str(e)}'
         }), 500
 
 @admin_bp.route('/users/<int:user_id>/unlock', methods=['POST'])
@@ -646,6 +732,12 @@ def delete_user(user_id):
                 'success': False,
                 'message': 'User not found'
             }), 404
+
+        if is_protected_account(user):
+            return jsonify({
+                'success': False,
+                'message': 'This account is protected and cannot be deleted'
+            }), 403
         
         data = request.get_json() or {}
         reason = data.get('reason', 'Deleted by administrator')
