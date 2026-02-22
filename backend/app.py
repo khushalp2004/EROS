@@ -114,7 +114,7 @@ app.register_blueprint(emergency_bp, url_prefix='/api')
 app.register_blueprint(authority_bp, url_prefix='/api')
 app.register_blueprint(notification_bp, url_prefix='/api')
 app.register_blueprint(location_bp, url_prefix='/api')
-app.register_blueprint(auth_bp, url_prefix='/api/auth')
+app.register_blueprint(auth_bp)
 app.register_blueprint(admin_bp)
 
 @app.route("/")

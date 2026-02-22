@@ -1,4 +1,5 @@
-from flask import Blueprint, request, jsonify
+import os
+from flask import Blueprint, request, jsonify, render_template_string
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from models import db, User
 from services.email_service import email_service
@@ -752,6 +753,58 @@ def admin_health():
         'service': 'EROS Admin API'
     }), 200
 
+def _render_direct_approval_page(success, title, message, user=None, login_url=None, status_code=200):
+    """Render a browser-friendly direct approval result page."""
+    page_template = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>{{ title }}</title>
+      <style>
+        body { font-family: Arial, sans-serif; background: #f4f7fb; margin: 0; padding: 24px; color: #1f2937; }
+        .card { max-width: 680px; margin: 40px auto; background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        .badge { display: inline-block; padding: 8px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; }
+        .ok { background: #e8f7ee; color: #166534; }
+        .err { background: #feecec; color: #991b1b; }
+        h1 { margin-top: 14px; margin-bottom: 10px; font-size: 28px; }
+        p { line-height: 1.5; }
+        .details { margin-top: 14px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
+        .btn { display: inline-block; margin-top: 18px; background: #2563eb; color: #fff; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 700; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <span class="badge {{ 'ok' if success else 'err' }}">
+          {{ 'APPROVED' if success else 'ACTION FAILED' }}
+        </span>
+        <h1>{{ title }}</h1>
+        <p>{{ message }}</p>
+        {% if user %}
+        <div class="details">
+          <p><strong>User:</strong> {{ user.get('name', '-') }}</p>
+          <p><strong>Email:</strong> {{ user.get('email', '-') }}</p>
+          <p><strong>Role:</strong> {{ user.get('role', '-') }}</p>
+          <p><strong>Organization:</strong> {{ user.get('organization', '-') }}</p>
+        </div>
+        {% endif %}
+        {% if login_url %}
+        <a class="btn" href="{{ login_url }}">Open Admin/Login Page</a>
+        {% endif %}
+      </div>
+    </body>
+    </html>
+    """
+    return render_template_string(
+        page_template,
+        success=success,
+        title=title,
+        message=message,
+        user=user,
+        login_url=login_url,
+    ), status_code
+
 @admin_bp.route('/direct-approve/<token>', methods=['GET'])
 def direct_approve_user(token):
     """
@@ -779,54 +832,86 @@ def direct_approve_user(token):
     - 500: Server error
     """
     try:
+        login_url = f"{os.getenv('FRONTEND_BASE_URL', 'http://localhost:3000').rstrip('/')}/login"
+
         # Find user by approval token
         user = User.find_by_approval_token(token)
         
         if not user:
-            return jsonify({
-                'success': False,
-                'message': 'Invalid or expired approval token',
-                'error': 'INVALID_TOKEN'
-            }), 400
+            return _render_direct_approval_page(
+                False,
+                "Invalid Approval Link",
+                "This approval link is invalid or expired.",
+                login_url=login_url,
+                status_code=400
+            )
         
         # Check if token is expired
         from datetime import datetime
         if user.approval_expires_at and datetime.utcnow() > user.approval_expires_at:
-            return jsonify({
-                'success': False,
-                'message': 'Approval token has expired',
-                'error': 'TOKEN_EXPIRED',
-                'expired_at': user.approval_expires_at.isoformat()
-            }), 400
+            return _render_direct_approval_page(
+                False,
+                "Approval Link Expired",
+                "This approval link has expired. Ask the user to request verification again.",
+                user={
+                    'name': f"{user.first_name or ''} {user.last_name or ''}".strip(),
+                    'email': user.email,
+                    'role': user.role,
+                    'organization': user.organization or 'N/A',
+                },
+                login_url=login_url,
+                status_code=400
+            )
         
         # Check if user is already approved
         if user.is_approved:
-            return jsonify({
-                'success': False,
-                'message': 'User is already approved',
-                'error': 'ALREADY_APPROVED',
-                'user_id': user.id,
-                'approved_at': user.updated_at.isoformat()
-            }), 400
+            return _render_direct_approval_page(
+                True,
+                "User Already Approved",
+                "This user was already approved earlier. No further action is needed.",
+                user={
+                    'name': f"{user.first_name or ''} {user.last_name or ''}".strip(),
+                    'email': user.email,
+                    'role': user.role,
+                    'organization': user.organization or 'N/A',
+                },
+                login_url=login_url,
+                status_code=200
+            )
         
         # Check if user is verified (must verify email first)
         if not user.is_verified:
-            return jsonify({
-                'success': False,
-                'message': 'Cannot approve user - email not verified',
-                'error': 'EMAIL_NOT_VERIFIED',
-                'user_id': user.id
-            }), 400
+            return _render_direct_approval_page(
+                False,
+                "User Not Verified Yet",
+                "Cannot approve this account because the user has not verified their email yet.",
+                user={
+                    'name': f"{user.first_name or ''} {user.last_name or ''}".strip(),
+                    'email': user.email,
+                    'role': user.role,
+                    'organization': user.organization or 'N/A',
+                },
+                login_url=login_url,
+                status_code=400
+            )
         
         # Approve user using direct token
         success, message = user.approve_via_direct_token(token)
         
         if not success:
-            return jsonify({
-                'success': False,
-                'message': message,
-                'error': 'APPROVAL_FAILED'
-            }), 400
+            return _render_direct_approval_page(
+                False,
+                "Approval Failed",
+                message,
+                user={
+                    'name': f"{user.first_name or ''} {user.last_name or ''}".strip(),
+                    'email': user.email,
+                    'role': user.role,
+                    'organization': user.organization or 'N/A',
+                },
+                login_url=login_url,
+                status_code=400
+            )
         
         # Prepare response data
         user_data = {
@@ -849,18 +934,28 @@ def direct_approve_user(token):
             user_data['notification_sent'] = False
             user_data['notification_error'] = str(e)
         
-        return jsonify({
-            'success': True,
-            'message': 'User approved successfully via direct email token',
-            'data': user_data
-        }), 200
+        return _render_direct_approval_page(
+            True,
+            "User Approved Successfully",
+            "The account has been approved. The user can now log in to EROS.",
+            user={
+                'name': user_data['user_name'],
+                'email': user_data['user_email'],
+                'role': user_data['user_role'],
+                'organization': user_data['organization'] or 'N/A',
+            },
+            login_url=login_url,
+            status_code=200
+        )
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Failed to approve user: {str(e)}',
-            'error': 'SERVER_ERROR'
-        }), 500
+        return _render_direct_approval_page(
+            False,
+            "Server Error",
+            f"Failed to approve user: {str(e)}",
+            login_url=f"{os.getenv('FRONTEND_BASE_URL', 'http://localhost:3000').rstrip('/')}/login",
+            status_code=500
+        )
 
 # Error handlers
 @admin_bp.errorhandler(403)

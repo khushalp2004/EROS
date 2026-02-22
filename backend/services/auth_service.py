@@ -201,8 +201,10 @@ class AuthService:
             
             # Send verification email
             from services.email_service import email_service
-            email_service.send_verification_email(user, token)
-            
+            email_success, email_message = email_service.send_verification_email(user, token)
+            if not email_success:
+                return False, email_message
+
             return True, "Verification email sent successfully"
             
         except Exception as e:
@@ -240,8 +242,10 @@ class AuthService:
             
             # Send verification email
             from services.email_service import email_service
-            email_service.send_verification_email(user, token)
-            
+            email_success, email_message = email_service.send_verification_email(user, token)
+            if not email_success:
+                return False, email_message
+
             return True, "Verification email sent successfully"
             
         except Exception as e:

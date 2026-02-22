@@ -18,6 +18,11 @@
 2. Set extra env vars if you use these features:
    - `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `FROM_EMAIL`, `FROM_NAME`, `ADMIN_EMAIL`
    - `SMS_PROVIDER`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`
+   - For Mailjet email API:
+     - `EMAIL_PROVIDER=mailjet`
+     - `MAILJET_API_KEY=<your-mailjet-api-key>`
+     - `MAILJET_API_SECRET=<your-mailjet-api-secret>`
+     - optional: `MAILJET_API_BASE=https://api.mailjet.com`
    - For Sender email API:
      - `EMAIL_PROVIDER=sender`
      - `SENDER_API_KEY=<your-sender-api-key>`

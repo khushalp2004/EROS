@@ -29,9 +29,6 @@ def _send_signup_emails_async(app, user_id):
             verification_token = user.verification_token
             email_success, email_message = email_service.send_verification_email(user, verification_token)
             print(f"[Async] Verification email sent: {email_success} - {email_message}")
-
-            admin_email_success, admin_message = email_service.send_admin_new_user_notification(user)
-            print(f"[Async] Admin notification sent: {admin_email_success} - {admin_message}")
     except Exception as exc:
         print(f"[Async] Signup email error: {exc}")
 
@@ -125,8 +122,8 @@ def signup():
                 'user_id': user.id,
                 'email_queued': True,
                 'verification_email_message': 'Verification email is being sent.',
-                'admin_notified': True,
-                'admin_notification_message': 'Admin notification is being sent.'
+                'admin_notified': False,
+                'admin_notification_message': 'Admin will be notified after authority email verification.'
             }), 201
         else:
             return jsonify({
@@ -322,14 +319,35 @@ def verify_email(token):
     }
     """
     try:
+        pending_user = User.find_by_verification_token(token)
+
         # Verify email
         success, message = AuthService.verify_email(token)
         
         if success:
+            admin_notified = False
+            admin_notification_message = "Admin notification not required for this role."
+            # Notify admin only for authority role after successful verification.
+            if pending_user and pending_user.role == 'authority':
+                approval_token = pending_user.generate_approval_token()
+                pending_user.save()
+                base_url = os.getenv('BACKEND_BASE_URL', request.url_root.rstrip('/'))
+                direct_approve_url = f"{base_url}/api/admin/direct-approve/{approval_token}"
+                from services.email_service import email_service
+                admin_success, admin_message = email_service.send_admin_new_user_notification(
+                    pending_user,
+                    direct_approve_url=direct_approve_url
+                )
+                admin_notified = admin_success
+                admin_notification_message = admin_message
+                print(f"[Verify] Admin notification sent: {admin_success} - {admin_message}")
+
             return jsonify({
                 'success': True,
                 'message': message,
-                'redirect': '/login?verified=true'
+                'redirect': '/login?verified=true',
+                'admin_notified': admin_notified,
+                'admin_notification_message': admin_notification_message
             }), 200
         else:
             return jsonify({

@@ -1,6 +1,5 @@
 import os
 import smtplib
-import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -14,7 +13,6 @@ class EmailService:
     """
     
     def __init__(self):
-        self.email_provider = os.getenv('EMAIL_PROVIDER', 'smtp').strip().lower()
         self.smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
         self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
         self.smtp_username = os.getenv('SMTP_USERNAME', '')
@@ -22,11 +20,7 @@ class EmailService:
         self.from_email = os.getenv('FROM_EMAIL', 'noreply@eros.local')
         self.from_name = os.getenv('FROM_NAME', 'EROS System')
         self.admin_email = os.getenv('ADMIN_EMAIL', '')
-        self.frontend_base_url = os.getenv('FRONTEND_BASE_URL', 'http://localhost:3000')
-        self.resend_api_key = os.getenv('RESEND_API_KEY', '').strip()
-        self.resend_api_base = os.getenv('RESEND_API_BASE', 'https://api.resend.com').rstrip('/')
-        self.sender_api_key = os.getenv('SENDER_API_KEY', '').strip()
-        self.sender_api_base = os.getenv('SENDER_API_BASE', 'https://api.sender.net').rstrip('/')
+        self.frontend_base_url = os.getenv('FRONTEND_BASE_URL', 'http://localhost:3001')
 
     def send_email(self, to_email, subject, html_content, text_content=None):
         """
@@ -41,25 +35,6 @@ class EmailService:
         Returns:
             tuple: (success: bool, message: str)
         """
-        if self.email_provider == 'sender':
-            success, message = self._send_via_sender(to_email, subject, html_content, text_content)
-            if success:
-                return True, message
-            smtp_success, smtp_message = self._send_via_smtp(to_email, subject, html_content, text_content)
-            if smtp_success:
-                return True, f"{message}; fallback SMTP success"
-            return False, f"{message}; SMTP fallback failed: {smtp_message}"
-
-        if self.email_provider == 'resend':
-            success, message = self._send_via_resend(to_email, subject, html_content, text_content)
-            if success:
-                return True, message
-            # Fallback to SMTP if configured
-            smtp_success, smtp_message = self._send_via_smtp(to_email, subject, html_content, text_content)
-            if smtp_success:
-                return True, f"{message}; fallback SMTP success"
-            return False, f"{message}; SMTP fallback failed: {smtp_message}"
-
         return self._send_via_smtp(to_email, subject, html_content, text_content)
 
     def _send_via_smtp(self, to_email, subject, html_content, text_content=None):
@@ -88,67 +63,6 @@ class EmailService:
         except Exception as e:
             return False, f"Failed to send email via SMTP: {str(e)}"
 
-    def _send_via_sender(self, to_email, subject, html_content, text_content=None):
-        try:
-            if not self.sender_api_key:
-                return False, "Sender API key is not configured"
-
-            payload = {
-                "from": {
-                    "email": self.from_email,
-                    "name": self.from_name,
-                },
-                "to": {
-                    "email": to_email,
-                },
-                "subject": subject,
-                "html": html_content,
-            }
-            if text_content:
-                payload["text"] = text_content
-
-            response = requests.post(
-                f"{self.sender_api_base}/v2/message/send",
-                headers={
-                    "Authorization": f"Bearer {self.sender_api_key}",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=10,
-            )
-            if 200 <= response.status_code < 300:
-                return True, "Email sent successfully (Sender)"
-            return False, f"Sender error {response.status_code}: {response.text}"
-        except Exception as e:
-            return False, f"Failed to send email via Sender: {str(e)}"
-
-    def _send_via_resend(self, to_email, subject, html_content, text_content=None):
-        try:
-            if not self.resend_api_key:
-                return False, "Resend API key is not configured"
-
-            response = requests.post(
-                f"{self.resend_api_base}/emails",
-                headers={
-                    "Authorization": f"Bearer {self.resend_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "from": f"{self.from_name} <{self.from_email}>",
-                    "to": [to_email],
-                    "subject": subject,
-                    "html": html_content,
-                    **({"text": text_content} if text_content else {}),
-                },
-                timeout=10,
-            )
-            if 200 <= response.status_code < 300:
-                return True, "Email sent successfully (Resend)"
-            return False, f"Resend error {response.status_code}: {response.text}"
-        except Exception as e:
-            return False, f"Failed to send email via Resend: {str(e)}"
-    
     def send_verification_email(self, user, verification_token):
         """
         Send email verification email to user
@@ -325,7 +239,7 @@ class EmailService:
         except Exception as e:
             return False, f"Failed to send password reset email: {str(e)}"
     
-    def send_admin_new_user_notification(self, user):
+    def send_admin_new_user_notification(self, user, direct_approve_url=None):
         """
         Send notification to admin about new user registration
         
@@ -336,7 +250,13 @@ class EmailService:
             tuple: (success: bool, message: str)
         """
         try:
-            subject = "New User Request - Approval Needed - EROS System"
+            admin_target = (self.admin_email or "").strip()
+            if not admin_target or admin_target.endswith("@example.com"):
+                admin_target = (self.smtp_username or "").strip()
+            if not admin_target:
+                return False, "Admin email is not configured with a real address"
+
+            subject = "New Authority Request - Approval Needed - EROS System"
             
             html_content = f"""
             <!DOCTYPE html>
@@ -379,11 +299,16 @@ class EmailService:
                         </div>
                         
                         <h3>🎯 Action Required:</h3>
-                        <p><strong>Admin Panel Review</strong></p>
-                        <p>Please log into the admin panel to review this user request and approve if appropriate:</p>
+                        <p><strong>Approve Request</strong></p>
+                        <p>You can approve this request directly from this email:</p>
                         
                         <div style="text-align: center; margin: 20px 0;">
-                            <a href="{self.frontend_base_url}" class="button">🔑 Log into Admin System</a>
+                            <a href="{direct_approve_url or self.frontend_base_url}" class="button">✅ Approve Authority Request</a>
+                        </div>
+                        
+                        <p>If direct approval is unavailable, you can still review from the admin panel:</p>
+                        <div style="text-align: center; margin: 20px 0;">
+                            <a href="{self.frontend_base_url}" class="button">🔑 Open Admin System</a>
                         </div>
                         
                         <p><strong>Next Steps After Approval:</strong></p>
@@ -411,7 +336,7 @@ class EmailService:
             """
             
             text_content = f"""
-            🚨 EROS Admin Notification - New User Request
+            🚨 EROS Admin Notification - New Authority Request
 
             A new user has requested access to the EROS system and is waiting for your approval.
 
@@ -425,7 +350,11 @@ class EmailService:
             - Email Status: {'✅ Verified' if user.is_verified else '⏳ Pending Verification'}
 
             🎯 Action Required:
-            Please log into the admin panel to review this user request: http://localhost:3000/login
+            Approve directly from email:
+            {direct_approve_url or self.frontend_base_url}
+            
+            Or review from the admin panel:
+            {self.frontend_base_url}
 
             After approval, the user will receive a notification and can log into the system.
 
@@ -435,7 +364,7 @@ class EmailService:
             EROS System Administrator
             """
             
-            return self.send_email(self.admin_email, subject, html_content, text_content)
+            return self.send_email(admin_target, subject, html_content, text_content)
             
         except Exception as e:
             return False, f"Failed to send admin notification: {str(e)}"
@@ -487,7 +416,7 @@ class EmailService:
                         </ul>
                         
                         <div style="text-align: center;">
-                            <a href="http://localhost:3000/login" class="button">Log In to EROS</a>
+                            <a href="http://localhost:3001/login" class="button">Log In to EROS</a>
                         </div>
                         
                         <p><strong>Your Account Details:</strong></p>
@@ -524,7 +453,7 @@ class EmailService:
             - Report emergencies and track their status
             - View notifications and system updates
 
-            Log in here: http://localhost:3000/login
+            Log in here: http://localhost:3001/login
 
             Your Account Details:
             - Email: {user.email}
@@ -603,7 +532,7 @@ class EmailService:
                         </div>
                         
                         <div style="text-align: center;">
-                            <a href="http://localhost:3000" class="button">Start Using EROS</a>
+                            <a href="http://localhost:3001" class="button">Start Using EROS</a>
                         </div>
                         
                         <p><strong>Need Help?</strong></p>
@@ -641,7 +570,7 @@ class EmailService:
             4. Check out the Units Tracking feature
             5. Customize your notification preferences
 
-            Start using EROS: http://localhost:3000
+            Start using EROS: http://localhost:3001
 
             If you have any questions or need assistance, our support team is here to help.
 
