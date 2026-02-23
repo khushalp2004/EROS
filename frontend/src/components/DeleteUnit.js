@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { unitAPI } from "../api";
+import "../styles/unit-modals.css";
 
 const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
   const [formData, setFormData] = useState({
@@ -134,96 +135,34 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
     onClose && onClose();
   };
 
-  const handleOpen = () => {
-    if (window.showToast) {
-      window.showToast({
-        message: '🗑️ Delete Emergency Unit',
-        description: 'Enter the vehicle number to permanently remove from system',
-        type: 'info',
-        duration: 3000
-      });
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1100
-    }}>
-      <div className="modal-content" style={{
-        backgroundColor: 'var(--bg-primary)',
-        borderRadius: 'var(--radius-xl)',
-        padding: 'var(--space-6)',
-        width: '90%',
-        maxWidth: '600px',
-        maxHeight: '90vh',
-        overflowY: 'auto',
-        boxShadow: 'var(--shadow-xl)',
-        border: '1px solid var(--gray-200)'
-      }}>
+    <div className="unit-modal-overlay">
+      <div className="unit-modal-card compact">
         {/* Header */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 'var(--space-6)',
-          borderBottom: '1px solid var(--gray-200)',
-          paddingBottom: 'var(--space-4)'
-        }}>
+        <div className="unit-modal-head">
           <div>
-            <h2 style={{
-              margin: 0,
-              fontSize: 'var(--text-xl)',
-              fontWeight: 'var(--font-semibold)',
-              color: 'var(--text-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}>
-              🗑️ Delete Emergency Unit
+            <h2 className="unit-modal-title">
+              <span className="unit-modal-title-icon" aria-hidden="true">🗑️</span>
+              Delete Emergency Unit
             </h2>
-            <p style={{
-              margin: 'var(--space-2) 0 0 0',
-              fontSize: 'var(--text-sm)',
-              color: 'var(--text-secondary)'
-            }}>
+            <p className="unit-modal-subtitle">
               Delete an emergency response unit by vehicle number
             </p>
           </div>
           <button
             onClick={handleClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: 'var(--text-lg)',
-              cursor: 'pointer',
-              padding: 'var(--space-2)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-muted)'
-            }}
-            onMouseOver={(e) => e.target.style.backgroundColor = 'var(--gray-100)'}
-            onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+            className="unit-modal-close"
+            aria-label="Close delete unit modal"
+            type="button"
           >
             ✕
           </button>
         </div>
 
         {success ? (
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--space-8)',
-            color: 'var(--secondary-green)'
-          }}>
+          <div className="unit-modal-confirm">
             <div style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-4)' }}>
               ✅
             </div>
@@ -235,10 +174,7 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
             </p>
           </div>
         ) : showConfirmation ? (
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--space-6)'
-          }}>
+          <div className="unit-modal-confirm">
             <div style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-4)' }}>
               ⚠️
             </div>
@@ -249,45 +185,18 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
               Are you sure you want to delete vehicle <strong>{formData.unit_vehicle_number}</strong>?<br/>
               This action cannot be undone.
             </p>
-            <div style={{
-              display: 'flex',
-              gap: 'var(--space-3)',
-              justifyContent: 'center'
-            }}>
+            <div className="unit-modal-actions">
               <button
                 onClick={handleCancelDelete}
                 disabled={loading}
-                style={{
-                  padding: 'var(--space-3) var(--space-6)',
-                  border: '1px solid var(--gray-300)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  borderRadius: 'var(--radius-lg)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.6 : 1
-                }}
+                className="unit-modal-btn secondary"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmDelete}
                 disabled={loading}
-                style={{
-                  padding: 'var(--space-3) var(--space-6)',
-                  border: 'none',
-                  backgroundColor: 'var(--accent-red)',
-                  color: 'var(--text-inverse)',
-                  borderRadius: 'var(--radius-lg)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)'
-                }}
+                className="unit-modal-btn danger"
               >
                 {loading && (
                   <div style={{
@@ -304,18 +213,12 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
             </div>
           </div>
         ) : (
-          <form onSubmit={handleDeleteClick}>
+          <form onSubmit={handleDeleteClick} className="unit-modal-form">
             <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
               
               {/* Vehicle Number Input */}
-              <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--space-2)'
-                }}>
+              <div className="unit-modal-field">
+                <label className="unit-modal-label">
                   Vehicle Number Plate *
                 </label>
                 <input
@@ -324,101 +227,42 @@ const DeleteUnit = ({ isOpen, onClose, onUnitDeleted }) => {
                   value={formData.unit_vehicle_number}
                   onChange={handleInputChange}
                   placeholder="e.g., ABC-1234, FIRE-001"
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-lg)',
-                    fontSize: 'var(--text-base)',
-                    backgroundColor: 'var(--bg-primary)'
-                  }}
+                  className="unit-modal-input"
                   maxLength={15}
                 />
-                <div style={{
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--text-muted)',
-                  marginTop: 'var(--space-1)'
-                }}>
+                <div className="unit-modal-note">
                   Enter the exact vehicle number you want to delete
                 </div>
               </div>
 
               {/* Warning Message */}
-              <div style={{
-                padding: 'var(--space-3)',
-                backgroundColor: 'var(--accent-red)',
-                color: 'var(--text-inverse)',
-                borderRadius: 'var(--radius-lg)',
-                fontSize: 'var(--text-sm)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)'
-              }}>
+              <div className="unit-modal-alert warning">
                 <span>⚠️</span>
                 <span>This action will permanently delete the vehicle and all associated data.</span>
               </div>
 
               {/* Error Display */}
               {error && (
-                <div style={{
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--accent-red)',
-                  color: 'var(--text-inverse)',
-                  borderRadius: 'var(--radius-lg)',
-                  fontSize: 'var(--text-sm)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)'
-                }}>
+                <div className="unit-modal-alert error">
                   <span>⚠️</span>
                   <span>{error}</span>
                 </div>
               )}
 
               {/* Action Buttons */}
-              <div style={{
-                display: 'flex',
-                gap: 'var(--space-3)',
-                justifyContent: 'flex-end',
-                borderTop: '1px solid var(--gray-200)',
-                paddingTop: 'var(--space-4)',
-                marginTop: 'var(--space-4)'
-              }}>
+              <div className="unit-modal-actions">
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={loading}
-                  style={{
-                    padding: 'var(--space-3) var(--space-6)',
-                    border: '1px solid var(--gray-300)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    borderRadius: 'var(--radius-lg)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--font-medium)',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.6 : 1
-                  }}
+                  className="unit-modal-btn secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  style={{
-                    padding: 'var(--space-3) var(--space-6)',
-                    border: 'none',
-                    backgroundColor: 'var(--accent-red)',
-                    color: 'var(--text-inverse)',
-                    borderRadius: 'var(--radius-lg)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--font-medium)',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-2)'
-                  }}
+                  className="unit-modal-btn danger"
                 >
                   {loading && (
                     <div style={{

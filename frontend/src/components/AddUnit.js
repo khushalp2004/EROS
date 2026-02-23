@@ -13,6 +13,7 @@ import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
+import "../styles/unit-modals.css";
 
 // Ensure marker icons load in bundlers
 L.Icon.Default.mergeOptions({
@@ -259,96 +260,34 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
     }
   }, [formData, onUnitAdded, validateForm, handleClose]);
 
-  const handleOpen = () => {
-    if (window.showToast) {
-      window.showToast({
-        message: '🚛 Add New Unit',
-        description: 'Fill in the details to add a new emergency response unit',
-        type: 'info',
-        duration: 3000
-      });
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1100
-    }}>
-      <div className="modal-content" style={{
-        backgroundColor: 'var(--bg-primary)',
-        borderRadius: 'var(--radius-xl)',
-        padding: 'var(--space-4)',
-      width: '85%',
-      maxWidth: '700px',
-      height: '90vh',
-      overflow: 'hidden',
-        boxShadow: 'var(--shadow-xl)',
-        border: '1px solid var(--gray-200)'
-      }}>
+    <div className="unit-modal-overlay">
+      <div className="unit-modal-card">
         {/* Header */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 'var(--space-6)',
-          borderBottom: '1px solid var(--gray-200)',
-          paddingBottom: 'var(--space-2)'
-        }}>
+        <div className="unit-modal-head">
           <div>
-            <h2 style={{
-              margin: 0,
-              fontSize: 'var(--text-xl)',
-              fontWeight: 'var(--font-semibold)',
-              color: 'var(--text-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}>
-              🚛 Add New Emergency Unit
+            <h2 className="unit-modal-title">
+              <span className="unit-modal-title-icon" aria-hidden="true">🚛</span>
+              Add New Emergency Unit
             </h2>
-            <p style={{
-              margin: 'var(--space-2) 0 0 0',
-              fontSize: 'var(--text-sm)',
-              color: 'var(--text-secondary)'
-            }}>
+            <p className="unit-modal-subtitle">
               Add a new emergency response unit to the system
             </p>
           </div>
           <button
             onClick={handleClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: 'var(--text-lg)',
-              cursor: 'pointer',
-              padding: 'var(--space-2)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-muted)'
-            }}
-            onMouseOver={(e) => e.target.style.backgroundColor = 'var(--gray-100)'}
-            onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+            className="unit-modal-close"
+            aria-label="Close add unit modal"
+            type="button"
           >
             ✕
           </button>
         </div>
 
         {success ? (
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--space-8)',
-            color: 'var(--secondary-green)'
-          }}>
+          <div className="unit-modal-confirm">
             <div style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-4)' }}>
               ✅
             </div>
@@ -360,18 +299,12 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="unit-modal-form">
             <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
               
               {/* Vehicle Number Input */}
-              <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--space-2)'
-                }}>
+              <div className="unit-modal-field">
+                <label className="unit-modal-label">
                   Vehicle Number Plate *
                 </label>
                 <input
@@ -380,52 +313,26 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
                   value={formData.unit_vehicle_number}
                   onChange={handleInputChange}
                   placeholder="e.g., ABC-1234, FIRE-001"
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-lg)',
-                    fontSize: 'var(--text-base)',
-                    backgroundColor: 'var(--bg-primary)'
-                  }}
+                  className="unit-modal-input"
                   maxLength={15}
                 />
-                <div style={{
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--text-muted)',
-                  marginTop: 'var(--space-1)'
-                }}>
+                <div className="unit-modal-note">
                   Must be unique and between 3-15 characters
                 </div>
               </div>
 
               {/* Service Type Selection */}
-              <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--space-2)'
-                }}>
+              <div className="unit-modal-field">
+                <label className="unit-modal-label">
                   Service Type *
                 </label>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                  gap: 'var(--space-3)'
-                }}>
+                <div className="unit-modal-service-grid">
                   {serviceTypes.map((service) => (
                     <label
                       key={service.value}
+                      className="unit-modal-service-option"
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--space-2)',
-                        padding: 'var(--space-3)',
-                        border: `2px solid ${formData.service_type === service.value ? service.color : 'var(--gray-200)'}`,
-                        borderRadius: 'var(--radius-lg)',
-                        cursor: 'pointer',
+                        border: `2px solid ${formData.service_type === service.value ? service.color : '#dbe3ef'}`,
                         backgroundColor: formData.service_type === service.value ? `${service.color}10` : 'transparent',
                         transition: 'all 0.2s ease'
                       }}
@@ -468,24 +375,13 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
               </div>
 
               {/* Location Selection Map */}
-              <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--font-medium)',
-                  color: 'var(--text-primary)',
-                  marginBottom: 'var(--space-2)'
-                }}>
+              <div className="unit-modal-field">
+                <label className="unit-modal-label">
                   Unit Location *
                 </label>
                 
                 {/* Location Actions */}
-                <div style={{
-                  display: 'flex',
-                  gap: 'var(--space-3)',
-                  marginBottom: 'var(--space-4)',
-                  flexWrap: 'wrap'
-                }}>
+                <div className="unit-modal-map-actions">
                   <button
                     type="button"
                     onClick={handleUseMyLocation}
@@ -597,13 +493,7 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
                     : "Click on the map below to set unit location or use 'Use My Location' button"}
                 </div>
                 
-                <div style={{
-                  height: '250px',
-                  border: '2px solid var(--gray-200)',
-                  borderRadius: 'var(--radius-lg)',
-                  overflow: 'hidden',
-                  position: 'relative'
-                }}>
+                <div className="unit-modal-map-shell">
                   <MapContainer
                     center={mapCenter}
                     zoom={mapZoom}
@@ -611,8 +501,8 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
                   >
                     <MapAutoCenter center={selectedLocation ? [selectedLocation.latitude, selectedLocation.longitude] : null} />
                     <TileLayer 
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                      attribution="Tiles &copy; Esri"
                     />
                     <LocationPicker 
                       value={selectedLocation ? [selectedLocation.latitude, selectedLocation.longitude] : null} 
@@ -668,65 +558,26 @@ const AddUnit = ({ isOpen, onClose, onUnitAdded }) => {
 
               {/* Error Display */}
               {error && (
-                <div style={{
-                  padding: 'var(--space-3)',
-                  backgroundColor: 'var(--accent-red)',
-                  color: 'var(--text-inverse)',
-                  borderRadius: 'var(--radius-lg)',
-                  fontSize: 'var(--text-sm)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)'
-                }}>
+                <div className="unit-modal-alert error">
                   <span>⚠️</span>
                   <span>{error}</span>
                 </div>
               )}
 
               {/* Action Buttons */}
-              <div style={{
-                display: 'flex',
-                gap: 'var(--space-3)',
-                justifyContent: 'flex-end',
-                borderTop: '1px solid var(--gray-200)',
-                paddingTop: 'var(--space-4)',
-                marginTop: 'var(--space-4)'
-              }}>
+              <div className="unit-modal-actions">
                 <button
                   type="button"
                   onClick={handleClose}
                   disabled={loading}
-                  style={{
-                    padding: 'var(--space-3) var(--space-6)',
-                    border: '1px solid var(--gray-300)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    borderRadius: 'var(--radius-lg)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--font-medium)',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.6 : 1
-                  }}
+                  className="unit-modal-btn secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  style={{
-                    padding: 'var(--space-3) var(--space-6)',
-                    border: 'none',
-                    backgroundColor: 'var(--primary-blue)',
-                    color: 'var(--text-inverse)',
-                    borderRadius: 'var(--radius-lg)',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 'var(--font-medium)',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-2)'
-                  }}
+                  className="unit-modal-btn primary"
                 >
                   {loading && (
                     <div style={{
