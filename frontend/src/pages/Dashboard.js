@@ -19,6 +19,8 @@ function Dashboard() {
   const [routes, setRoutes] = useState([]);
   const [routesLoading, setRoutesLoading] = useState(false);
   const [showUnitMarkers, setShowUnitMarkers] = useState(false);
+  const [dispatchBlockInfo, setDispatchBlockInfo] = useState(null);
+  const [dispatchingEmergencyId, setDispatchingEmergencyId] = useState(null);
   const [filters, setFilters] = useState({
     status: "ALL",
     type: "ALL",
@@ -327,17 +329,34 @@ function Dashboard() {
 
   const handleDispatch = async (emergency) => {
     try {
+      setDispatchingEmergencyId(emergency?.request_id || null);
+      showToast(`Dispatching emergency #${emergency?.request_id}...`, "info", 1200);
       // Find the assigned unit to get vehicle number
       const assignedUnit = units.find(unit => unit.unit_id === emergency.assigned_unit);
       const vehicleNumber = assignedUnit?.unit_vehicle_number || `Unit ${emergency.assigned_unit}`;
       
       await api.post(`/api/authority/dispatch/${emergency.request_id}`);
       showToast(`Unit ${vehicleNumber} is dispatched`, "success");
+      setDispatchBlockInfo(null);
       await fetchData(emergenciesPage);
     } catch (error) {
       console.error("Dispatch error:", error);
-      const msg = error?.response?.data?.error || "No ambulance available for this emergency (within 50 km).";
+      const responseData = error?.response?.data;
+      const isBlockedRouteError = error?.response?.status === 409 && Array.isArray(responseData?.blocking_segment_ids);
+
+      if (isBlockedRouteError) {
+        setDispatchBlockInfo({
+          emergencyId: emergency?.request_id,
+          nearestUnit: responseData?.nearest_unit || null,
+          blockingSegmentIds: responseData?.blocking_segment_ids || [],
+          message: responseData?.error || "All nearest-unit route alternatives are blocked by simulation."
+        });
+      }
+
+      const msg = responseData?.error || "No ambulance available for this emergency (within 50 km).";
       showToast(msg, "error");
+    } finally {
+      setDispatchingEmergencyId(null);
     }
   };
 
@@ -376,6 +395,87 @@ function Dashboard() {
       {toast && (
         <div className={`dashboard-toast ${toast.type}`}>
           {toast.message}
+        </div>
+      )}
+
+      {dispatchBlockInfo && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(2, 6, 23, 0.45)",
+          zIndex: 1400,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "16px"
+        }}>
+          <div style={{
+            width: "min(560px, 100%)",
+            borderRadius: "14px",
+            border: "1px solid #cbd5e1",
+            background: "#ffffff",
+            boxShadow: "0 16px 40px rgba(15,23,42,0.28)",
+            padding: "16px"
+          }}>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "1.03rem", color: "#0f172a" }}>
+              Route Blocked By Simulation
+            </h3>
+            <p style={{ margin: "0 0 10px 0", color: "#475569", fontSize: "0.9rem" }}>
+              {dispatchBlockInfo.message}
+            </p>
+            <div style={{ display: "grid", gap: "6px", marginBottom: "12px", fontSize: "0.88rem", color: "#1e293b" }}>
+              <div><strong>Emergency:</strong> #{dispatchBlockInfo.emergencyId}</div>
+              <div>
+                <strong>Nearest Unit:</strong>{" "}
+                {dispatchBlockInfo.nearestUnit?.unit_vehicle_number
+                  ? `${dispatchBlockInfo.nearestUnit.unit_vehicle_number} (ID ${dispatchBlockInfo.nearestUnit.unit_id})`
+                  : (dispatchBlockInfo.nearestUnit?.unit_id ? `Unit ${dispatchBlockInfo.nearestUnit.unit_id}` : "N/A")}
+              </div>
+              <div>
+                <strong>Blocking Segment IDs:</strong>{" "}
+                {dispatchBlockInfo.blockingSegmentIds.length > 0
+                  ? dispatchBlockInfo.blockingSegmentIds.join(", ")
+                  : "None returned"}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <a
+                href="/admin/traffic"
+                style={{
+                  textDecoration: "none",
+                  background: "#2563eb",
+                  color: "#fff",
+                  border: "1px solid #2563eb",
+                  borderRadius: "10px",
+                  minHeight: "36px",
+                  padding: "0 12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  fontWeight: 700,
+                  fontSize: "0.82rem"
+                }}
+              >
+                Open Traffic Simulation
+              </a>
+              <button
+                type="button"
+                onClick={() => setDispatchBlockInfo(null)}
+                style={{
+                  background: "#f8fafc",
+                  color: "#334155",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "10px",
+                  minHeight: "36px",
+                  padding: "0 12px",
+                  fontWeight: 700,
+                  fontSize: "0.82rem",
+                  cursor: "pointer"
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -571,6 +671,7 @@ function Dashboard() {
             onCenterMap={centerMapOnLocation}
             selectedId={selectedEmergency?.request_id}
             onDispatch={handleDispatch}
+            dispatchingEmergencyId={dispatchingEmergencyId}
             onComplete={handleComplete}
             availableByType={{
               'AMBULANCE': getAvailableUnitsByType('AMBULANCE'),

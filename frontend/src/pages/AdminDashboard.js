@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { authAPI } from '../api';
 import Breadcrumbs from '../components/Breadcrumbs';
 import '../styles/admin-dashboard.css';
@@ -225,6 +226,11 @@ function AdminDashboard() {
           <p className="admin-hero-subtitle">
             Manage user approvals, role access, and platform health from a single control center.
           </p>
+          <div style={{ marginTop: '10px' }}>
+            <Link className="admin-btn ghost" to="/admin/traffic">
+              Open Traffic Simulation
+            </Link>
+          </div>
         </section>
 
         {adminStats && (

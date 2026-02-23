@@ -1,7 +1,8 @@
 import os
+import json
 from flask import Blueprint, request, jsonify, render_template_string
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from models import db, User
+from models import db, User, TrafficSegment
 from services.email_service import email_service
 from utils.validators import validate_required_fields, validate_role
 from routes.notification_routes import create_system_notification
@@ -41,6 +42,67 @@ def is_protected_account(user):
         (protected_user_id and str(user.id) == protected_user_id) or
         (protected_user_email and (user.email or '').strip().lower() == protected_user_email)
     )
+
+
+def _validate_traffic_geometry(geometry):
+    if not isinstance(geometry, dict):
+        return False, "Geometry must be a GeoJSON object"
+
+    if geometry.get("type") != "LineString":
+        return False, "Geometry type must be LineString"
+
+    coordinates = geometry.get("coordinates")
+    if not isinstance(coordinates, list) or len(coordinates) < 2:
+        return False, "LineString must contain at least 2 coordinates"
+
+    for coord in coordinates:
+        if (
+            not isinstance(coord, list) or
+            len(coord) != 2 or
+            not isinstance(coord[0], (int, float)) or
+            not isinstance(coord[1], (int, float))
+        ):
+            return False, "Each coordinate must be [lng, lat]"
+
+    return True, None
+
+
+def _extract_segment_meta(raw_notes):
+    if not raw_notes:
+        return {"city": None, "zone": None, "note": None}
+    if isinstance(raw_notes, str) and raw_notes.startswith("__meta__:"):
+        try:
+            payload = json.loads(raw_notes.split("__meta__:", 1)[1])
+            return {
+                "city": (payload.get("city") or "").strip() or None,
+                "zone": (payload.get("zone") or "").strip() or None,
+                "note": (payload.get("note") or "").strip() or None
+            }
+        except Exception:
+            return {"city": None, "zone": None, "note": raw_notes}
+    return {"city": None, "zone": None, "note": raw_notes}
+
+
+def _build_segment_meta_notes(city=None, zone=None, note=None):
+    payload = {
+        "city": (city or "").strip() or None,
+        "zone": (zone or "").strip() or None,
+        "note": (note or "").strip() or None
+    }
+    return f"__meta__:{json.dumps(payload)}"
+
+
+def _segment_to_payload(row):
+    item = row.to_dict()
+    try:
+        item["geometry"] = json.loads(item["geometry"])
+    except Exception:
+        item["geometry"] = None
+    meta = _extract_segment_meta(item.get("notes"))
+    item["notes"] = meta["note"]
+    item["city"] = meta["city"]
+    item["zone"] = meta["zone"]
+    return item
 
 @admin_bp.route('/pending-users', methods=['GET'])
 @admin_required()
@@ -831,6 +893,174 @@ def get_admin_stats():
         return jsonify({
             'success': False,
             'message': f'Failed to retrieve admin stats: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/traffic-segments', methods=['GET'])
+@admin_required()
+def get_traffic_segments():
+    """Get all manual traffic simulation segments (admin only)."""
+    try:
+        active_only = request.args.get('active') == 'true'
+        city_filter = (request.args.get('city') or '').strip().lower()
+        zone_filter = (request.args.get('zone') or '').strip().lower()
+
+        query = TrafficSegment.query
+        if active_only:
+            query = query.filter_by(is_active=True)
+
+        rows = query.order_by(TrafficSegment.updated_at.desc()).all()
+        payload = []
+        for row in rows:
+            item = _segment_to_payload(row)
+            item_city = (item.get("city") or "").strip().lower()
+            item_zone = (item.get("zone") or "").strip().lower()
+            if city_filter and item_city != city_filter:
+                continue
+            if zone_filter and item_zone != zone_filter:
+                continue
+            payload.append(item)
+
+        return jsonify({
+            "success": True,
+            "segments": payload,
+            "total": len(payload)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Failed to load traffic segments: {str(e)}"
+        }), 500
+
+
+@admin_bp.route('/traffic-segments', methods=['POST'])
+@admin_required()
+def create_traffic_segment():
+    """Create a traffic segment (admin only)."""
+    try:
+        data = request.get_json() or {}
+        geometry = data.get("geometry")
+        jam_level = (data.get("jam_level") or "MEDIUM").strip().upper()
+        if jam_level == "BLOCKED":
+            jam_level = "HIGH"
+        name = (data.get("name") or "").strip() or None
+        notes = (data.get("notes") or "").strip() or None
+        city = (data.get("city") or "").strip() or None
+        zone = (data.get("zone") or "").strip() or None
+        is_active = bool(data.get("is_active", True))
+
+        valid_levels = {"LOW", "MEDIUM", "HIGH"}
+        if jam_level not in valid_levels:
+            return jsonify({
+                "success": False,
+                "message": "jam_level must be LOW, MEDIUM, or HIGH"
+            }), 400
+
+        is_valid, error = _validate_traffic_geometry(geometry)
+        if not is_valid:
+            return jsonify({"success": False, "message": error}), 400
+
+        row = TrafficSegment(
+            name=name,
+            jam_level=jam_level,
+            geometry=json.dumps(geometry),
+            notes=_build_segment_meta_notes(city=city, zone=zone, note=notes),
+            is_active=is_active
+        )
+
+        db.session.add(row)
+        db.session.commit()
+
+        item = _segment_to_payload(row)
+        return jsonify({
+            "success": True,
+            "message": "Traffic segment created",
+            "segment": item
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "message": f"Failed to create traffic segment: {str(e)}"
+        }), 500
+
+
+@admin_bp.route('/traffic-segments/<int:segment_id>', methods=['PUT'])
+@admin_required()
+def update_traffic_segment(segment_id):
+    """Update traffic segment details (admin only)."""
+    try:
+        row = TrafficSegment.query.get(segment_id)
+        if not row:
+            return jsonify({"success": False, "message": "Traffic segment not found"}), 404
+
+        data = request.get_json() or {}
+        current_meta = _extract_segment_meta(row.notes)
+
+        if "name" in data:
+            row.name = (data.get("name") or "").strip() or None
+        if "is_active" in data:
+            row.is_active = bool(data.get("is_active"))
+        if "jam_level" in data:
+            jam_level = (data.get("jam_level") or "").strip().upper()
+            if jam_level == "BLOCKED":
+                jam_level = "HIGH"
+            if jam_level not in {"LOW", "MEDIUM", "HIGH"}:
+                return jsonify({
+                    "success": False,
+                    "message": "jam_level must be LOW, MEDIUM, or HIGH"
+                }), 400
+            row.jam_level = jam_level
+        if "geometry" in data:
+            geometry = data.get("geometry")
+            is_valid, error = _validate_traffic_geometry(geometry)
+            if not is_valid:
+                return jsonify({"success": False, "message": error}), 400
+            row.geometry = json.dumps(geometry)
+
+        if "notes" in data or "city" in data or "zone" in data:
+            next_note = current_meta["note"] if "notes" not in data else (data.get("notes") or "").strip() or None
+            next_city = current_meta["city"] if "city" not in data else (data.get("city") or "").strip() or None
+            next_zone = current_meta["zone"] if "zone" not in data else (data.get("zone") or "").strip() or None
+            row.notes = _build_segment_meta_notes(city=next_city, zone=next_zone, note=next_note)
+
+        db.session.commit()
+
+        item = _segment_to_payload(row)
+        return jsonify({
+            "success": True,
+            "message": "Traffic segment updated",
+            "segment": item
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "message": f"Failed to update traffic segment: {str(e)}"
+        }), 500
+
+
+@admin_bp.route('/traffic-segments/<int:segment_id>', methods=['DELETE'])
+@admin_required()
+def delete_traffic_segment(segment_id):
+    """Delete a traffic segment (admin only)."""
+    try:
+        row = TrafficSegment.query.get(segment_id)
+        if not row:
+            return jsonify({"success": False, "message": "Traffic segment not found"}), 404
+
+        db.session.delete(row)
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": "Traffic segment deleted",
+            "segment_id": segment_id
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "message": f"Failed to delete traffic segment: {str(e)}"
         }), 500
 
 @admin_bp.route('/health', methods=['GET'])

@@ -29,6 +29,7 @@ export default function Navigation() {
       return [
         { to: '/', label: 'Reporters' },
         { to: '/admin', label: 'Approvals' },
+        { to: '/admin/traffic', label: 'Traffic Sim' },
       ];
     }
 

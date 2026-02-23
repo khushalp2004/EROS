@@ -355,13 +355,22 @@ export default function Navigation() {
         >
           {/* Admin Access */}
           {isAuthenticated && user?.role === 'admin' && (
-            <EmergencyNavItem 
-              to="/admin" 
-              isActive={location.pathname === '/admin'}
-              priority="critical"
-            >
-              🛡️ Admin
-            </EmergencyNavItem>
+            <>
+              <EmergencyNavItem 
+                to="/admin" 
+                isActive={location.pathname === '/admin'}
+                priority="critical"
+              >
+                🛡️ Admin
+              </EmergencyNavItem>
+              <EmergencyNavItem 
+                to="/admin/traffic" 
+                isActive={location.pathname === '/admin/traffic'}
+                priority="critical"
+              >
+                🚦 Traffic
+              </EmergencyNavItem>
+            </>
           )}
 
           {/* User Info & Logout */}

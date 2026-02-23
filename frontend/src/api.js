@@ -189,7 +189,16 @@ export const authAPI = {
     
     // Statistics and health
     getAdminStats: () => api.get('/api/admin/stats'),
-    health: () => api.get('/api/admin/health')
+    health: () => api.get('/api/admin/health'),
+
+    // Manual traffic simulation
+    getTrafficSegments: (params = {}) => {
+      const queryParams = new URLSearchParams(params).toString();
+      return api.get(`/api/admin/traffic-segments${queryParams ? '?' + queryParams : ''}`);
+    },
+    createTrafficSegment: (payload) => api.post('/api/admin/traffic-segments', payload),
+    updateTrafficSegment: (segmentId, payload) => api.put(`/api/admin/traffic-segments/${segmentId}`, payload),
+    deleteTrafficSegment: (segmentId) => api.delete(`/api/admin/traffic-segments/${segmentId}`)
   }
 };
 

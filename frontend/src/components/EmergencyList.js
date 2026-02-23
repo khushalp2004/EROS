@@ -9,6 +9,7 @@ function EmergencyList({
   onDispatch,
   onComplete,
   availableByType = {},
+  dispatchingEmergencyId = null,
 }) {
   const normalizeEmergencyType = (type) => String(type || "").toUpperCase();
 
@@ -69,6 +70,7 @@ function EmergencyList({
               availableByType[emergency.emergency_type] ??
               availableByType[normalizedType] ??
               0;
+            const isDispatching = dispatchingEmergencyId === emergency.request_id;
 
             return (
               <tr
@@ -134,13 +136,10 @@ function EmergencyList({
                           console.error('❌ onDispatch handler is not available!');
                         }
                       }}
-                      disabled={availableForType === 0}
-                      className={`emergency-action-btn approve ${availableForType === 0 ? "disabled" : ""}`}
+                      disabled={availableForType === 0 || isDispatching}
+                      className={`emergency-action-btn approve ${(availableForType === 0 || isDispatching) ? "disabled" : ""}`}
                     >
-                      {availableForType ? 
-                        'Approve' : 
-                        'No Unit'
-                      }
+                      {isDispatching ? 'Dispatching...' : (availableForType ? 'Approve' : 'No Unit')}
                     </button>
                   )}
                   {emergency.status === "ASSIGNED" && (

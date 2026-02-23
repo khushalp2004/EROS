@@ -9,6 +9,7 @@ import EmailVerification from "./components/EmailVerification";
 import Dashboard from "./pages/Dashboard";
 import UnitsTracking from "./pages/UnitsTracking";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminTrafficSimulation from "./pages/AdminTrafficSimulation";
 import UnitDashboard from "./pages/UnitDashboard";
 import PublicEmergencyTracking from "./pages/PublicEmergencyTracking";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
@@ -44,6 +45,10 @@ function RouteMetaManager() {
       "/admin": {
         title: "Admin | EROS",
         description: "Manage platform approvals, accounts, and administration settings."
+      },
+      "/admin/traffic": {
+        title: "Traffic Simulation | EROS",
+        description: "Configure manual traffic jam segments for dispatch route simulation."
       },
       "/unit": {
         title: "Unit Task | EROS",
@@ -202,6 +207,7 @@ function AppContent() {
             <Route path="/dashboard" element={<AuthorityProtectedRoute><Dashboard /></AuthorityProtectedRoute>} />
             <Route path="/units-tracking" element={<AuthorityProtectedRoute><UnitsTracking /></AuthorityProtectedRoute>} />
             <Route path="/admin" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
+            <Route path="/admin/traffic" element={<AdminProtectedRoute><AdminTrafficSimulation /></AdminProtectedRoute>} />
             <Route path="/unit" element={<UnitProtectedRoute><UnitDashboard /></UnitProtectedRoute>} />
             <Route path="/track/:token" element={<PublicEmergencyTracking />} />
           </Routes>
