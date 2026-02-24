@@ -179,11 +179,14 @@ if __name__ == "__main__":
     ensure_simulation_started(app)
     
     debug_mode = os.environ.get("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+    render_env = os.environ.get("RENDER", "").strip().lower() in {"1", "true", "yes", "on"}
+    env_allow_unsafe = os.environ.get("ALLOW_UNSAFE_WERKZEUG", "").strip().lower() in {"1", "true", "yes", "on"}
+    allow_unsafe_werkzeug = debug_mode or render_env or env_allow_unsafe
     # Run with SocketIO
     socketio.run(
         app,
         debug=debug_mode,
         port=port,
         host='0.0.0.0',
-        allow_unsafe_werkzeug=debug_mode
+        allow_unsafe_werkzeug=allow_unsafe_werkzeug
     )
