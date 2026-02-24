@@ -9,7 +9,7 @@ import { io } from 'socket.io-client';
 import GPSSnapper from '../utils/GPSSnapper';
 import RouteGeometryManager from '../utils/RouteGeometryManager';
 
-const SOCKET_URL = 'http://127.0.0.1:5001';
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:5001';
 
 export const useWebSocketWithGPSSnapping = (routeGeometryManager = null) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -40,6 +40,7 @@ export const useWebSocketWithGPSSnapping = (routeGeometryManager = null) => {
 
     console.log('🔌 Connecting WebSocket with GPS snapping enabled...');
     
+    const authToken = localStorage.getItem('authToken');
     socketRef.current = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       timeout: 5000,
@@ -47,7 +48,8 @@ export const useWebSocketWithGPSSnapping = (routeGeometryManager = null) => {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      autoConnect: true
+      autoConnect: true,
+      auth: authToken ? { token: authToken } : undefined
     });
 
     const socket = socketRef.current;

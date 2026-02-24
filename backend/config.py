@@ -6,6 +6,8 @@ load_dotenv(os.path.join(_BASE_DIR, ".env"))
 
 # Security
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
+if not SECRET_KEY or SECRET_KEY == "change-this-in-production":
+    raise RuntimeError("JWT_SECRET_KEY must be set to a strong non-default value.")
 
 # Database
 SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")

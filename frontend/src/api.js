@@ -189,6 +189,14 @@ export const authAPI = {
     
     // Statistics and health
     getAdminStats: () => api.get('/api/admin/stats'),
+    getSmsSettings: () => api.get('/api/admin/sms-settings'),
+    updateSmsSettings: (smsServiceEnabled) =>
+      api.put('/api/admin/sms-settings', { sms_service_enabled: smsServiceEnabled }),
+    getTrackingLinks: (params = {}) => {
+      const queryParams = new URLSearchParams(params).toString();
+      return api.get(`/api/admin/tracking-links${queryParams ? '?' + queryParams : ''}`);
+    },
+    deleteTrackingLink: (linkId) => api.delete(`/api/admin/tracking-links/${linkId}`),
     health: () => api.get('/api/admin/health'),
 
     // Manual traffic simulation

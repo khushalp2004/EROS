@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { unitTaskAPI } from '../api';
 import Breadcrumbs from '../components/Breadcrumbs';
-import { useWebSocketManager } from '../hooks/useWebSocketManager';
+import { connectionManager, useWebSocketManager } from '../hooks/useWebSocketManager';
 import backendRouteManager from '../utils/BackendRouteManager';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
@@ -74,6 +74,46 @@ function routePointAtProgress(positions, progress) {
   ];
 }
 
+function snapPointToRoute(routePositions, point) {
+  if (!Array.isArray(routePositions) || routePositions.length < 2 || !Array.isArray(point)) {
+    return null;
+  }
+
+  let best = null;
+  let minDistanceSquared = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < routePositions.length - 1; i++) {
+    const a = routePositions[i];
+    const b = routePositions[i + 1];
+    const ax = a[1];
+    const ay = a[0];
+    const bx = b[1];
+    const by = b[0];
+    const px = point[1];
+    const py = point[0];
+
+    const abx = bx - ax;
+    const aby = by - ay;
+    const apx = px - ax;
+    const apy = py - ay;
+    const lengthSquared = abx * abx + aby * aby;
+    const t = lengthSquared > 0 ? Math.max(0, Math.min(1, (apx * abx + apy * aby) / lengthSquared)) : 0;
+
+    const projX = ax + t * abx;
+    const projY = ay + t * aby;
+    const dx = px - projX;
+    const dy = py - projY;
+    const distanceSquared = dx * dx + dy * dy;
+
+    if (distanceSquared < minDistanceSquared) {
+      minDistanceSquared = distanceSquared;
+      best = [projY, projX];
+    }
+  }
+
+  return best;
+}
+
 function bearingBetweenPoints(a, b) {
   if (!a || !b) return 0;
   const [lat1, lon1] = a;
@@ -144,7 +184,7 @@ export default function UnitDashboard() {
 
   const { isConnected, unitLocations, refreshUnitLocations, reconnect } = useWebSocketManager();
 
-  const loadMyTask = async ({ showLoading = false } = {}) => {
+  const loadMyTask = useCallback(async ({ showLoading = false } = {}) => {
     try {
       if (showLoading) setLoading(true);
       setError('');
@@ -169,7 +209,7 @@ export default function UnitDashboard() {
     } finally {
       if (showLoading) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadMyTask({ showLoading: true });
@@ -185,6 +225,43 @@ export default function UnitDashboard() {
       refreshUnitLocations();
     }
   }, [isConnected, refreshUnitLocations]);
+
+  useEffect(() => {
+    if (!isConnected || !unit?.unit_id) return;
+
+    const currentUnitId = Number(unit.unit_id);
+    const matchesCurrentUnit = (candidateUnitId) =>
+      candidateUnitId != null && Number(candidateUnitId) === currentUnitId;
+
+    const handleUnitStatusUpdate = (data) => {
+      if (!data) return;
+      if (matchesCurrentUnit(data.unit_id)) {
+        loadMyTask({ showLoading: false });
+      }
+    };
+
+    const handleEmergencyEvent = (payload) => {
+      if (!payload) return;
+      const emergency = payload.emergency || payload;
+      const assignedUnitId = emergency?.assigned_unit;
+      const sameEmergency = assignedEmergency?.request_id != null &&
+        Number(emergency?.request_id) === Number(assignedEmergency.request_id);
+
+      if (matchesCurrentUnit(assignedUnitId) || sameEmergency) {
+        loadMyTask({ showLoading: false });
+      }
+    };
+
+    const unsubscribeUnitStatus = connectionManager.subscribe('unit_status_update', handleUnitStatusUpdate);
+    const unsubscribeEmergencyUpdated = connectionManager.subscribe('emergency_updated', handleEmergencyEvent);
+    const unsubscribeEmergencyUpdate = connectionManager.subscribe('emergency_update', handleEmergencyEvent);
+
+    return () => {
+      unsubscribeUnitStatus && unsubscribeUnitStatus();
+      unsubscribeEmergencyUpdated && unsubscribeEmergencyUpdated();
+      unsubscribeEmergencyUpdate && unsubscribeEmergencyUpdate();
+    };
+  }, [isConnected, unit?.unit_id, assignedEmergency?.request_id, loadMyTask]);
 
   useEffect(() => {
     if (!unit?.unit_id) return;
@@ -264,17 +341,29 @@ export default function UnitDashboard() {
     return [];
   }, [routeFromManager, fallbackRoute]);
 
+  const hasProgress = typeof realtimeUnitLocation?.progress === 'number';
   const progress = useMemo(() => {
     const p = realtimeUnitLocation?.progress;
     if (typeof p === 'number') return Math.max(0, Math.min(1, p));
     return 0;
   }, [realtimeUnitLocation?.progress]);
 
-  const simulatedUnitPoint = useMemo(() => routePointAtProgress(routePositions, progress), [routePositions, progress]);
-  const aheadPoint = useMemo(() => routePointAtProgress(routePositions, Math.min(1, progress + 0.03)), [routePositions, progress]);
+  const simulatedUnitPoint = useMemo(
+    () => (hasProgress ? routePointAtProgress(routePositions, progress) : null),
+    [routePositions, progress, hasProgress]
+  );
+  const aheadPoint = useMemo(
+    () => (hasProgress ? routePointAtProgress(routePositions, Math.min(1, progress + 0.03)) : null),
+    [routePositions, progress, hasProgress]
+  );
+  const snappedRealtimePoint = useMemo(() => {
+    if (realtimeUnitLocation?.latitude == null || realtimeUnitLocation?.longitude == null) return null;
+    return snapPointToRoute(routePositions, [realtimeUnitLocation.latitude, realtimeUnitLocation.longitude]);
+  }, [routePositions, realtimeUnitLocation]);
 
   const liveUnitPoint = useMemo(() => {
     if (simulatedUnitPoint) return simulatedUnitPoint;
+    if (snappedRealtimePoint) return snappedRealtimePoint;
     if (realtimeUnitLocation?.latitude != null && realtimeUnitLocation?.longitude != null) {
       return [realtimeUnitLocation.latitude, realtimeUnitLocation.longitude];
     }
@@ -282,7 +371,7 @@ export default function UnitDashboard() {
       return [unit.latitude, unit.longitude];
     }
     return null;
-  }, [simulatedUnitPoint, realtimeUnitLocation, unit]);
+  }, [simulatedUnitPoint, snappedRealtimePoint, realtimeUnitLocation, unit]);
 
   const heading = useMemo(() => {
     if (liveUnitPoint && aheadPoint) return bearingBetweenPoints(liveUnitPoint, aheadPoint);

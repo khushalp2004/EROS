@@ -7,6 +7,7 @@ from werkzeug.security import check_password_hash
 from models import db, User
 from services.auth_service import AuthService
 from extensions import limiter
+from token_blocklist import revoke_token
 
 from utils.validators import validate_required_fields, validate_email, validate_password_strength
 import os
@@ -190,7 +191,7 @@ def login():
         
         # Authenticate user
         status, message, user = AuthService.authenticate_user(email, password)
-        print(f"🔐 Login attempt: email={email}, status={status}")
+        print(f"🔐 Login attempt status={status}")
         
         if status == 'success':
             # Generate tokens for approved users
@@ -284,16 +285,12 @@ def logout():
     }
     """
     try:
-        # Get current user ID
-        current_user_id = get_jwt_identity()
-        
-        # In a production environment, you might want to blacklist the token
-        # For now, we'll just return a success message
-        # TODO: Implement token blacklisting for production
+        token_payload = get_jwt()
+        revoke_token(token_payload.get("jti"))
         
         return jsonify({
             'success': True,
-            'message': 'Successfully logged out'
+            'message': 'Successfully logged out and token invalidated'
         }), 200
         
     except Exception as e:

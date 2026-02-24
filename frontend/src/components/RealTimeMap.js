@@ -6,7 +6,7 @@ import io from 'socket.io-client';
 import api from '../api';
 
 // WebSocket URL
-const SOCKET_URL = 'http://127.0.0.1:5001';
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:5001';
 
 // Socket connection
 let socket = null;
@@ -120,9 +120,11 @@ const RealTimeMap = ({
   // Initialize WebSocket connection
   useEffect(() => {
     if (!socket) {
+      const authToken = localStorage.getItem('authToken');
       socket = io(SOCKET_URL, {
         transports: ['websocket'],
-        autoConnect: true
+        autoConnect: true,
+        auth: authToken ? { token: authToken } : undefined
       });
 
       socket.on('connect', () => {
@@ -460,4 +462,3 @@ const RealTimeMap = ({
 };
 
 export default RealTimeMap;
-

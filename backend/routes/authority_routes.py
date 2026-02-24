@@ -5,7 +5,7 @@ from models.emergency import Emergency
 from models.location import RouteCalculation
 from models.user import User
 from models.emergency_reporter_contact import EmergencyReporterContact
-from models import db, TrafficSegment
+from models import db, PublicTrackingLink, TrafficSegment
 from datetime import datetime
 from config import OSRM_BASE_URL
 from routes.notification_routes import create_emergency_notification, create_unit_notification
@@ -37,6 +37,14 @@ def _normalized_frontend_base_url():
     if 'localhost' in base:
         base = base.replace('localhost', '127.0.0.1')
     return base.rstrip('/')
+
+
+def _ensure_public_tracking_links_table():
+    try:
+        PublicTrackingLink.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        # Table creation should not block dispatch flow.
+        pass
 
 
 def _resolve_unit_driver(unit_id):
@@ -762,6 +770,7 @@ def add_unit():
 @authority_bp.route("/authority/dispatch/<int:emergency_id>", methods=["POST"])
 @authority_required()
 def dispatch_emergency(emergency_id):
+    _ensure_public_tracking_links_table()
     emergency = Emergency.query.get(emergency_id)
 
     if not emergency:
@@ -1110,13 +1119,30 @@ def dispatch_emergency(emergency_id):
     db.session.add(route_calc)
     db.session.commit()
 
-    # Reporter SMS: send tracking link only after assignment
+    # Reporter SMS: generate/store tracking link only if reporter phone exists.
     sms_sent = False
     sms_message = "No reporter phone for this emergency"
+    tracking_token = None
+    tracking_url = None
     reporter_contact = EmergencyReporterContact.query.filter_by(emergency_id=emergency.request_id).first()
     if reporter_contact and reporter_contact.reporter_phone:
         tracking_token = _build_tracking_token(emergency.request_id)
         tracking_url = f"{_normalized_frontend_base_url()}/track/{tracking_token}"
+        tracking_link = PublicTrackingLink.query.filter_by(tracking_token=tracking_token).first()
+        if tracking_link:
+            tracking_link.emergency_id = emergency.request_id
+            tracking_link.tracking_url = tracking_url
+            tracking_link.is_active = True
+            tracking_link.revoked_at = None
+        else:
+            db.session.add(PublicTrackingLink(
+                emergency_id=emergency.request_id,
+                tracking_token=tracking_token,
+                tracking_url=tracking_url,
+                is_active=True
+            ))
+        db.session.commit()
+
         driver = _resolve_unit_driver(nearest_unit.unit_id)
         sms_service = SMSService()
         sms_sent, sms_message = sms_service.send_assigned_tracking_message(
@@ -1228,6 +1254,8 @@ def dispatch_emergency(emergency_id):
         "route_positions": emergency_data['route_positions'],
         "route_calculation_id": route_calc.id,
         "routing_source": "osrm_full_geometry" if waypoint_count > 0 else "euclidean_fallback",
+        "public_tracking_token": tracking_token,
+        "public_tracking_url": tracking_url,
         "reporter_sms_sent": sms_sent,
         "reporter_sms_message": sms_message
     })

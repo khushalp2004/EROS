@@ -9,8 +9,12 @@ function AdminDashboard() {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [adminStats, setAdminStats] = useState(null);
+  const [smsSettings, setSmsSettings] = useState(null);
+  const [trackingLinks, setTrackingLinks] = useState([]);
+  const [trackingLoading, setTrackingLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState({});
+  const [smsProcessing, setSmsProcessing] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [filters, setFilters] = useState({
     role: '',
@@ -27,6 +31,9 @@ function AdminDashboard() {
     if (activeTab === 'all') {
       loadAllUsers();
     }
+    if (activeTab === 'tracking') {
+      loadTrackingLinks();
+    }
   }, [activeTab, filters]);
 
   const loadInitialData = async () => {
@@ -34,7 +41,8 @@ function AdminDashboard() {
       setLoading(true);
       await Promise.all([
         loadPendingUsers(),
-        loadAdminStats()
+        loadAdminStats(),
+        loadSmsSettings()
       ]);
     } catch (error) {
       console.error('Error loading admin data:', error);
@@ -77,6 +85,32 @@ function AdminDashboard() {
     }
   };
 
+  const loadSmsSettings = async () => {
+    try {
+      const response = await authAPI.admin.getSmsSettings();
+      if (response.data.success) {
+        setSmsSettings(response.data.settings);
+      }
+    } catch (error) {
+      console.error('Error loading SMS settings:', error);
+    }
+  };
+
+  const loadTrackingLinks = async () => {
+    try {
+      setTrackingLoading(true);
+      const response = await authAPI.admin.getTrackingLinks({ include_inactive: true });
+      if (response.data.success) {
+        setTrackingLinks(response.data.links || []);
+      }
+    } catch (error) {
+      console.error('Error loading tracking links:', error);
+      window.showErrorToast('Failed to load tracking links');
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
   const handleApproveUser = async (userId) => {
     try {
       setProcessing(prev => ({ ...prev, [userId]: true }));
@@ -86,9 +120,27 @@ function AdminDashboard() {
       });
 
       if (response.data.success) {
+        // Optimistic UI update so the action feels instant.
+        setPendingUsers((prev) => prev.filter((u) => u.id !== userId));
+        setAllUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId
+              ? { ...u, is_approved: true, is_active: true }
+              : u
+          )
+        );
+        setAdminStats((prev) =>
+          prev
+            ? {
+                ...prev,
+                pending_users: Math.max((prev.pending_users || 0) - 1, 0),
+                active_users: (prev.active_users || 0) + 1
+              }
+            : prev
+        );
         window.showSuccessToast('User approved successfully');
-        await loadPendingUsers();
-        await loadAdminStats();
+        // Refresh in background (non-blocking) for server-truth sync.
+        Promise.all([loadPendingUsers(), loadAdminStats()]);
       }
     } catch (error) {
       console.error('Error approving user:', error);
@@ -153,6 +205,58 @@ function AdminDashboard() {
       window.showErrorToast(error.response?.data?.message || 'Failed to update account lock state');
     } finally {
       setProcessing(prev => ({ ...prev, [user.id]: false }));
+    }
+  };
+
+  const handleToggleSmsService = async () => {
+    if (!smsSettings) return;
+    try {
+      setSmsProcessing(true);
+      const nextEnabled = !smsSettings.sms_service_enabled;
+      const response = await authAPI.admin.updateSmsSettings(nextEnabled);
+      if (response.data.success) {
+        setSmsSettings(response.data.settings);
+        window.showSuccessToast(
+          nextEnabled ? 'SMS service enabled' : 'SMS service disabled'
+        );
+      }
+    } catch (error) {
+      console.error('Error updating SMS settings:', error);
+      window.showErrorToast(error.response?.data?.message || 'Failed to update SMS setting');
+    } finally {
+      setSmsProcessing(false);
+    }
+  };
+
+  const handleDeleteTrackingLink = async (linkId) => {
+    try {
+      const processingKey = `tracking-${linkId}`;
+      setProcessing(prev => ({ ...prev, [processingKey]: true }));
+      const response = await authAPI.admin.deleteTrackingLink(linkId);
+      if (response.data.success) {
+        window.showSuccessToast('Tracking link deleted');
+        await loadTrackingLinks();
+      }
+    } catch (error) {
+      console.error('Error deleting tracking link:', error);
+      window.showErrorToast(error.response?.data?.message || 'Failed to delete tracking link');
+    } finally {
+      const processingKey = `tracking-${linkId}`;
+      setProcessing(prev => ({ ...prev, [processingKey]: false }));
+    }
+  };
+
+  const handleOpenTrackingLink = (link) => {
+    const rawUrl = (link?.tracking_url || '').trim();
+    if (!rawUrl) {
+      window.showErrorToast('Tracking URL is missing');
+      return;
+    }
+
+    const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `http://${rawUrl}`;
+    const popup = window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      window.showErrorToast('Popup blocked by browser. Please allow popups for this site.');
     }
   };
 
@@ -231,6 +335,27 @@ function AdminDashboard() {
               Open Traffic Simulation
             </Link>
           </div>
+          <div className="admin-service-row">
+            <div className="admin-service-card">
+              <div>
+                <div className="admin-service-title">SMS Service</div>
+                <div className="admin-service-subtitle">
+                  {smsSettings?.sms_service_enabled ? 'Enabled' : 'Disabled'} | Provider: {smsSettings?.provider || 'twilio'}
+                </div>
+              </div>
+              <button
+                onClick={handleToggleSmsService}
+                disabled={smsProcessing || !smsSettings}
+                className={`admin-btn ${smsSettings?.sms_service_enabled ? 'warn' : 'activate'}`}
+              >
+                {smsProcessing
+                  ? 'Updating...'
+                  : smsSettings?.sms_service_enabled
+                    ? 'Turn OFF SMS'
+                    : 'Turn ON SMS'}
+              </button>
+            </div>
+          </div>
         </section>
 
         {adminStats && (
@@ -271,6 +396,13 @@ function AdminDashboard() {
               className={`admin-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
             >
               All Users
+            </button>
+
+            <button
+              onClick={() => setActiveTab('tracking')}
+              className={`admin-tab-btn ${activeTab === 'tracking' ? 'active' : ''}`}
+            >
+              Tracking Links
             </button>
           </div>
 
@@ -447,6 +579,77 @@ function AdminDashboard() {
                             {processing[user.id]
                               ? (isUserLocked(user) ? 'Unlocking...' : 'Locking...')
                               : (isUserLocked(user) ? 'Unlock Account' : 'Lock Account')}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'tracking' && (
+              <div>
+                <div className="admin-all-head">
+                  <h2 className="admin-section-title">Public Tracking Links</h2>
+                  <button
+                    onClick={loadTrackingLinks}
+                    className="admin-btn ghost"
+                    disabled={trackingLoading}
+                  >
+                    {trackingLoading ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
+
+                {trackingLinks.length === 0 ? (
+                  <div className="admin-empty-state">
+                    <div className="admin-empty-icon">Link</div>
+                    <p>No public tracking links found</p>
+                  </div>
+                ) : (
+                  <div className="admin-user-list">
+                    {trackingLinks.map((link) => (
+                      <article key={link.id} className="admin-user-card">
+                        <div className="admin-user-main">
+                          <div className="admin-user-head">
+                            <h3>Emergency #{link.emergency_id}</h3>
+                            <span
+                              className="admin-badge"
+                              style={{ backgroundColor: link.is_working ? 'var(--success-green)' : 'var(--primary-red)' }}
+                            >
+                              {link.is_working ? 'Working' : 'Not Working'}
+                            </span>
+                            <span
+                              className="admin-badge"
+                              style={{ backgroundColor: link.is_active ? 'var(--primary-blue)' : 'var(--gray-500)' }}
+                            >
+                              {link.is_active ? 'Active' : 'Deleted'}
+                            </span>
+                          </div>
+
+                          <div className="admin-user-meta">
+                            <p><span>Status</span>{link.emergency_status || 'Unknown'}</p>
+                            <p><span>Created</span>{formatDate(link.created_at)}</p>
+                            <p><span>Revoked</span>{link.revoked_at ? formatDate(link.revoked_at) : 'N/A'}</p>
+                            <p><span>URL</span>{link.tracking_url}</p>
+                          </div>
+                        </div>
+
+                        <div className="admin-user-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTrackingLink(link)}
+                            disabled={!link.tracking_url}
+                            className="admin-btn ghost"
+                          >
+                            Open
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTrackingLink(link.id)}
+                            disabled={processing[`tracking-${link.id}`] || !link.is_active}
+                            className="admin-btn reject"
+                          >
+                            {processing[`tracking-${link.id}`] ? 'Deleting...' : 'Delete Link'}
                           </button>
                         </div>
                       </article>

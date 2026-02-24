@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io } from 'socket.io-client';
 
 // Centralized WebSocket manager with request coordination
-const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://127.0.0.1:5001';
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:5001';
 
 // Global connection instance
 let globalSocket = null;
@@ -47,6 +47,7 @@ class WebSocketConnectionManager {
     this.isConnecting = true;
     console.log('🔌 Creating centralized WebSocket connection...');
     
+    const authToken = localStorage.getItem('authToken');
     globalSocket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       timeout: 5000,
@@ -54,7 +55,8 @@ class WebSocketConnectionManager {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      autoConnect: true
+      autoConnect: true,
+      auth: authToken ? { token: authToken } : undefined
     });
 
     this.setupEventHandlers();

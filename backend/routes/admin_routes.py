@@ -1,9 +1,11 @@
 import os
 import json
-from flask import Blueprint, request, jsonify, render_template_string
+import threading
+from flask import Blueprint, request, jsonify, render_template_string, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from models import db, User, TrafficSegment
+from models import db, Emergency, PublicTrackingLink, User, TrafficSegment
 from services.email_service import email_service
+from services.sms_service import SMSService
 from utils.validators import validate_required_fields, validate_role
 from routes.notification_routes import create_system_notification
 import traceback
@@ -11,6 +13,35 @@ import functools
 
 # Create blueprint
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
+
+
+def _send_approval_side_effects_async(app_obj, user_id, custom_message=None):
+    """Send post-approval notifications in background so API responds quickly."""
+    try:
+        with app_obj.app_context():
+            user = User.query.get(user_id)
+            if not user:
+                return
+
+            try:
+                email_service.send_user_approval_notification(user)
+            except Exception as e:
+                print(f"Failed to send approval notification asynchronously: {str(e)}")
+
+            try:
+                admin_notification_message = f"User {user.first_name} {user.last_name} ({user.email}) has been approved and activated."
+                if custom_message:
+                    admin_notification_message += f" Custom message: {custom_message}"
+                create_system_notification(
+                    title="User Approved",
+                    message=admin_notification_message,
+                    priority='normal',
+                    target_roles=['admin']
+                )
+            except Exception as e:
+                print(f"Failed to send admin notification asynchronously: {str(e)}")
+    except Exception as e:
+        print(f"Async approval side-effects failed: {str(e)}")
 
 def admin_required():
     """
@@ -103,6 +134,13 @@ def _segment_to_payload(row):
     item["city"] = meta["city"]
     item["zone"] = meta["zone"]
     return item
+
+
+def _ensure_public_tracking_links_table():
+    try:
+        PublicTrackingLink.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        pass
 
 @admin_bp.route('/pending-users', methods=['GET'])
 @admin_required()
@@ -396,41 +434,26 @@ def approve_user(user_id):
         
         user.save()
         
-        # Send notification email if requested
+        # Queue notification side effects without blocking API response
         data = request.get_json() or {}
         send_notification = data.get('send_notification', True)
         custom_message = data.get('message')
-        
-        notification_sent = False
+        notification_queued = False
         if send_notification:
-            try:
-                success, message = email_service.send_user_approval_notification(user)
-                notification_sent = success
-            except Exception as e:
-                # Log error but don't fail the approval
-                print(f"Failed to send approval notification: {str(e)}")
-        
-        # Send in-app notification to admin users about the approval
-        try:
-            admin_notification_message = f"User {user.first_name} {user.last_name} ({user.email}) has been approved and activated."
-            if custom_message:
-                admin_notification_message += f" Custom message: {custom_message}"
-            
-            create_system_notification(
-                title="User Approved",
-                message=admin_notification_message,
-                priority='normal',
-                target_roles=['admin']  # Only notify other admin users
-            )
-        except Exception as e:
-            # Log error but don't fail the approval
-            print(f"Failed to send admin notification: {str(e)}")
+            app_obj = current_app._get_current_object()
+            threading.Thread(
+                target=_send_approval_side_effects_async,
+                args=(app_obj, user.id, custom_message),
+                daemon=True
+            ).start()
+            notification_queued = True
         
         return jsonify({
             'success': True,
             'message': 'User approved successfully',
             'user_id': user.id,
-            'notification_sent': notification_sent,
+            'notification_sent': notification_queued,
+            'notification_queued': notification_queued,
             'custom_message': custom_message
         }), 200
         
@@ -895,6 +918,53 @@ def get_admin_stats():
             'message': f'Failed to retrieve admin stats: {str(e)}'
         }), 500
 
+@admin_bp.route('/sms-settings', methods=['GET'])
+@admin_required()
+def get_sms_settings():
+    """Get SMS service runtime settings (admin only)."""
+    try:
+        return jsonify({
+            "success": True,
+            "settings": {
+                "sms_service_enabled": SMSService.is_enabled(),
+                "provider": os.getenv("SMS_PROVIDER", "twilio").lower()
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Failed to retrieve SMS settings: {str(e)}"
+        }), 500
+
+@admin_bp.route('/sms-settings', methods=['PUT'])
+@admin_required()
+def update_sms_settings():
+    """Update SMS service runtime settings (admin only)."""
+    try:
+        data = request.get_json() or {}
+        if "sms_service_enabled" not in data:
+            return jsonify({
+                "success": False,
+                "message": "sms_service_enabled field is required"
+            }), 400
+
+        enabled = bool(data.get("sms_service_enabled"))
+        SMSService.set_enabled(enabled)
+
+        return jsonify({
+            "success": True,
+            "message": f"SMS service {'enabled' if enabled else 'disabled'} successfully",
+            "settings": {
+                "sms_service_enabled": SMSService.is_enabled(),
+                "provider": os.getenv("SMS_PROVIDER", "twilio").lower()
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Failed to update SMS settings: {str(e)}"
+        }), 500
+
 
 @admin_bp.route('/traffic-segments', methods=['GET'])
 @admin_required()
@@ -1061,6 +1131,76 @@ def delete_traffic_segment(segment_id):
         return jsonify({
             "success": False,
             "message": f"Failed to delete traffic segment: {str(e)}"
+        }), 500
+
+
+@admin_bp.route('/tracking-links', methods=['GET'])
+@admin_required()
+def get_public_tracking_links():
+    """List public tracking links for admin verification."""
+    try:
+        _ensure_public_tracking_links_table()
+
+        include_inactive = request.args.get('include_inactive', 'true').strip().lower() in {'1', 'true', 'yes', 'on'}
+        query = PublicTrackingLink.query.order_by(PublicTrackingLink.created_at.desc())
+        if not include_inactive:
+            query = query.filter_by(is_active=True)
+
+        links = query.limit(500).all()
+        emergency_ids = [link.emergency_id for link in links if link.emergency_id is not None]
+        emergencies = Emergency.query.filter(Emergency.request_id.in_(emergency_ids)).all() if emergency_ids else []
+        emergency_by_id = {e.request_id: e for e in emergencies}
+
+        payload = []
+        for link in links:
+            emergency = emergency_by_id.get(link.emergency_id)
+            emergency_status = emergency.status if emergency else 'MISSING'
+            is_working = bool(link.is_active and emergency and emergency.status != 'COMPLETED')
+            payload.append({
+                **link.to_dict(),
+                'emergency_status': emergency_status,
+                'is_working': is_working
+            })
+
+        return jsonify({
+            'success': True,
+            'links': payload,
+            'total': len(payload)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Failed to retrieve tracking links: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/tracking-links/<int:link_id>', methods=['DELETE'])
+@admin_required()
+def revoke_public_tracking_link(link_id):
+    """Soft delete (revoke) a public tracking link."""
+    try:
+        _ensure_public_tracking_links_table()
+        link = PublicTrackingLink.query.get(link_id)
+        if not link:
+            return jsonify({
+                'success': False,
+                'message': 'Tracking link not found'
+            }), 404
+
+        if link.is_active:
+            link.revoke()
+            db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Tracking link deleted',
+            'link': link.to_dict()
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Failed to delete tracking link: {str(e)}'
         }), 500
 
 @admin_bp.route('/health', methods=['GET'])

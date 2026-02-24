@@ -1,7 +1,7 @@
 import os
 import json
 from flask import Blueprint, jsonify, request
-from models import Emergency, Unit, db
+from models import Emergency, Unit, PublicTrackingLink, db
 from models.location import RouteCalculation
 from models.user import User
 from models.emergency_reporter_contact import EmergencyReporterContact
@@ -41,6 +41,14 @@ def _normalized_frontend_base_url():
     if 'localhost' in base:
         base = base.replace('localhost', '127.0.0.1')
     return base.rstrip('/')
+
+
+def _ensure_public_tracking_links_table():
+    try:
+        PublicTrackingLink.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception:
+        # Avoid breaking emergency creation/read due schema drift.
+        pass
 
 
 def _resolve_unit_driver(unit_id):
@@ -124,6 +132,7 @@ def get_emergencies():
 @emergency_bp.route('/emergencies', methods=['POST'])
 @limiter.limit("20 per minute")
 def add_emergency():
+    _ensure_public_tracking_links_table()
     data = request.get_json()
     emergency_type = data.get('emergency_type')
     latitude = data.get('latitude')
@@ -185,9 +194,6 @@ def add_emergency():
     
     print(f"🔴 Real-time: New emergency #{new_emergency.request_id} broadcasted to all clients")
 
-    public_tracking_token = _build_tracking_token(new_emergency.request_id)
-    frontend_base_url = _normalized_frontend_base_url()
-    public_tracking_url = f"{frontend_base_url}/track/{public_tracking_token}"
     sms_sent = False
     sms_message = "Reporter phone not provided"
     if reporter_phone:
@@ -212,8 +218,6 @@ def add_emergency():
         'message': 'Emergency added',
         'request_id': new_emergency.request_id,
         'reporter_phone': reporter_phone,
-        'public_tracking_token': public_tracking_token,
-        'public_tracking_url': public_tracking_url,
         'sms_sent': sms_sent,
         'sms_message': sms_message
     })
@@ -222,6 +226,7 @@ def add_emergency():
 @emergency_bp.route('/public/emergencies/track/<string:tracking_token>', methods=['GET'])
 @limiter.limit("60 per minute")
 def get_public_emergency_tracking(tracking_token):
+    _ensure_public_tracking_links_table()
     try:
         payload = _decode_tracking_token(tracking_token)
         request_id = int(payload.get("request_id"))
@@ -233,6 +238,13 @@ def get_public_emergency_tracking(tracking_token):
     emergency = Emergency.query.get(request_id)
     if not emergency:
         return jsonify({"error": "Emergency not found"}), 404
+
+    link_record = PublicTrackingLink.query.filter_by(tracking_token=tracking_token).first()
+    if link_record and not link_record.is_active:
+        return jsonify({"error": "Tracking link is no longer active"}), 410
+
+    if emergency.status == "COMPLETED":
+        return jsonify({"error": "Tracking link is no longer active"}), 410
 
     unit = Unit.query.get(emergency.assigned_unit) if emergency.assigned_unit else None
     unit_location = unit_locations.get(emergency.assigned_unit) if emergency.assigned_unit else None

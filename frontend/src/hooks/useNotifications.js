@@ -43,7 +43,11 @@ export const NotificationProvider = ({ children, userId = null }) => {
       return;
     }
 
-    const newSocket = io('http://localhost:5001');
+    const socketUrl = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:5001';
+    const authToken = localStorage.getItem('authToken');
+    const newSocket = io(socketUrl, {
+      auth: authToken ? { token: authToken } : undefined
+    });
     
     newSocket.on('connect', () => {
       setIsConnected(true);

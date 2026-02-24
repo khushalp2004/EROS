@@ -3,7 +3,7 @@ import api from "../api";
 import RealtimeMapView from "../components/RealtimeMapView";
 import EmergencyList from "../components/EmergencyList";
 import Breadcrumbs from "../components/Breadcrumbs";
-import { useWebSocketManager } from "../hooks/useWebSocketManager";
+import { connectionManager, useWebSocketManager } from "../hooks/useWebSocketManager";
 import backendRouteManager from "../utils/BackendRouteManager";
 import { fetchRoute } from "../services/routeService";
 import "../styles/dashboard-styles.css";
@@ -229,6 +229,61 @@ function Dashboard() {
   useEffect(() => {
     fetchData(emergenciesPage);
   }, [emergenciesPage]);
+
+  useEffect(() => {
+    if (!wsConnected) return;
+
+    const upsertEmergency = (incomingEmergency) => {
+      if (!incomingEmergency || !incomingEmergency.request_id) return;
+
+      setEmergencies((prev) => {
+        const index = prev.findIndex((item) => item.request_id === incomingEmergency.request_id);
+        if (index === -1) {
+          return [incomingEmergency, ...prev];
+        }
+
+        const next = [...prev];
+        next[index] = { ...next[index], ...incomingEmergency };
+        return next;
+      });
+
+      setTableEmergencies((prev) => {
+        const index = prev.findIndex((item) => item.request_id === incomingEmergency.request_id);
+        if (index === -1) {
+          if (emergenciesPage !== 1) return prev;
+          return [incomingEmergency, ...prev].slice(0, emergenciesPerPage);
+        }
+
+        const next = [...prev];
+        next[index] = { ...next[index], ...incomingEmergency };
+        return next;
+      });
+    };
+
+    const handleEmergencyCreated = (data) => {
+      upsertEmergency(data);
+      setEmergenciesTotal((prev) => {
+        const nextTotal = prev + 1;
+        setEmergenciesTotalPages(Math.max(1, Math.ceil(nextTotal / emergenciesPerPage)));
+        return nextTotal;
+      });
+    };
+
+    const handleEmergencyUpdated = (payload) => {
+      const emergency = payload?.emergency || payload;
+      upsertEmergency(emergency);
+    };
+
+    const unsubscribeCreated = connectionManager.subscribe("emergency_created", handleEmergencyCreated);
+    const unsubscribeUpdated = connectionManager.subscribe("emergency_updated", handleEmergencyUpdated);
+    const unsubscribeGenericUpdate = connectionManager.subscribe("emergency_update", handleEmergencyUpdated);
+
+    return () => {
+      unsubscribeCreated && unsubscribeCreated();
+      unsubscribeUpdated && unsubscribeUpdated();
+      unsubscribeGenericUpdate && unsubscribeGenericUpdate();
+    };
+  }, [wsConnected, emergenciesPage, emergenciesPerPage]);
 
   // Filter emergencies by status
   const pendingEmergencies = emergencies.filter(e => e.status === 'PENDING');

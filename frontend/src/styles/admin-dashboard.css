@@ -51,6 +51,33 @@
   line-height: 1.45;
 }
 
+.admin-service-row {
+  margin-top: 12px;
+}
+
+.admin-service-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.admin-service-title {
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.admin-service-subtitle {
+  color: #475569;
+  font-size: 0.82rem;
+  margin-top: 2px;
+}
+
 .admin-stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -571,6 +598,11 @@
 
   .admin-hero-card {
     padding: 14px;
+  }
+
+  .admin-service-card {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .admin-btn {

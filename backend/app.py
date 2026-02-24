@@ -64,7 +64,9 @@ from routes.notification_routes import notification_bp
 from routes.location_routes import location_bp
 from routes.auth_routes import auth_bp
 from routes.admin_routes import admin_bp
-from events import socketio, init_websocket
+from routes.communication_routes import communication_bp
+from events import socketio, init_websocket, ensure_simulation_started
+from token_blocklist import is_token_revoked
 
 app = Flask(__name__)
 
@@ -113,6 +115,10 @@ def invalidate_token_for_locked_or_inactive(jwt_header, jwt_payload):
     This makes currently logged-in users lose session on their next API request.
     """
     try:
+        jti = jwt_payload.get("jti")
+        if is_token_revoked(jti):
+            return True
+
         user_id = jwt_payload.get("sub")
         if not user_id:
             return True
@@ -150,17 +156,34 @@ app.register_blueprint(notification_bp, url_prefix='/api')
 app.register_blueprint(location_bp, url_prefix='/api')
 app.register_blueprint(auth_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(communication_bp)
+
+# Ensure DB tables exist in all deployment entrypoints (not only __main__).
+auto_create_schema = os.environ.get("AUTO_CREATE_DB_SCHEMA", "true").strip().lower() in {"1", "true", "yes", "on"}
+if auto_create_schema:
+    try:
+        with app.app_context():
+            db.create_all()
+    except Exception as e:
+        print(f"⚠️ Schema auto-create skipped: {e}")
 
 @app.route("/")
 def home():
     return {"status": "Backend running successfully", "websocket": "enabled"}
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    
     # Get port from environment variable, default to 5001
     port = int(os.environ.get('PORT', 5001))
+
+    # Simulation should start only when running this server process directly.
+    ensure_simulation_started(app)
     
+    debug_mode = os.environ.get("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
     # Run with SocketIO
-    socketio.run(app, debug=True, port=port, host='0.0.0.0', allow_unsafe_werkzeug=True)
+    socketio.run(
+        app,
+        debug=debug_mode,
+        port=port,
+        host='0.0.0.0',
+        allow_unsafe_werkzeug=debug_mode
+    )

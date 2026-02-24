@@ -5,6 +5,7 @@ import math
 from datetime import datetime, timedelta
 from flask import request
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_jwt_extended import decode_token
 from models import Unit, Emergency
 import polyline
 
@@ -355,37 +356,51 @@ def _parse_frontend_origins():
 
 def init_websocket(app):
     """Initialize WebSocket with the Flask app"""
-    global simulation_thread, simulation_running
     socketio.init_app(app,
         cors_allowed_origins=_parse_frontend_origins(),
         cors_credentials=False,
         allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRFToken"]
     )
-
-    # Start simulation thread only once
-    if not simulation_running:
-        print("🚀 Starting backend unit movement simulation...")
-        simulation_running = True
-        with app.app_context():
-            simulation_thread = simulate_unit_movement(app)
-        print("✅ Backend simulation started successfully!")
     
     return socketio
 
-def start_unit_simulation(app):
-    """Start unit simulation with proper app context"""
+def ensure_simulation_started(app):
+    """Start simulation thread once when explicitly invoked."""
     global simulation_thread, simulation_running
+    if simulation_running:
+        return simulation_thread
+    print("🚀 Starting backend unit movement simulation...")
+    simulation_running = True
     with app.app_context():
-        # Start simulation thread if not already running
-        if not simulation_running:
-            simulation_running = True
-            simulation_thread = simulate_unit_movement(app)
+        simulation_thread = simulate_unit_movement(app)
+    print("✅ Backend simulation started successfully!")
     return simulation_thread
 
+def start_unit_simulation(app):
+    """Start unit simulation with proper app context"""
+    return ensure_simulation_started(app)
+
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth=None):
     """Handle client connection"""
     print(f"Client connected: {request.sid}")
+
+    # Join per-user room when a valid JWT is provided in socket handshake.
+    try:
+        token = None
+        if isinstance(auth, dict):
+            token = auth.get("token") or auth.get("access_token")
+        if not token:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header.split(" ", 1)[1].strip()
+        if token:
+            payload = decode_token(token)
+            user_id = payload.get("sub")
+            if user_id:
+                join_room(f"user_{user_id}")
+    except Exception:
+        pass
     
     # Send current unit locations to newly connected client
     for unit_id, location in unit_locations.items():

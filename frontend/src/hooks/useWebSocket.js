@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = 'http://127.0.0.1:5001';
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:5001';
 
 export const useWebSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -20,6 +20,7 @@ export const useWebSocket = () => {
 
     console.log('🔌 Attempting WebSocket connection...');
     
+    const authToken = localStorage.getItem('authToken');
     socketRef.current = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       timeout: 5000,
@@ -27,7 +28,8 @@ export const useWebSocket = () => {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      autoConnect: true
+      autoConnect: true,
+      auth: authToken ? { token: authToken } : undefined
     });
 
     const socket = socketRef.current;

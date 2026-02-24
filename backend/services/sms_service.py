@@ -3,11 +3,21 @@ import requests
 
 
 class SMSService:
+    _runtime_enabled = os.getenv("SMS_SERVICE_ENABLED", "true").strip().lower() not in {"0", "false", "off", "no"}
+
     def __init__(self):
         self.provider = os.getenv("SMS_PROVIDER", "twilio").lower()
         self.twilio_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
         self.twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
         self.twilio_from_number = os.getenv("TWILIO_FROM_NUMBER", "")
+
+    @classmethod
+    def is_enabled(cls):
+        return cls._runtime_enabled
+
+    @classmethod
+    def set_enabled(cls, enabled):
+        cls._runtime_enabled = bool(enabled)
 
     def _can_send_twilio(self):
         return bool(self.twilio_sid and self.twilio_auth_token and self.twilio_from_number)
@@ -81,6 +91,8 @@ class SMSService:
         return False, f"Unsupported SMS provider: {self.provider}"
 
     def _send_twilio_sms(self, to_phone, body):
+        if not self.is_enabled():
+            return False, "SMS service is currently disabled by admin."
         if not self._can_send_twilio():
             return False, "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER."
 
