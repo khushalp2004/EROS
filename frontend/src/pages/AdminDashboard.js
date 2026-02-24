@@ -158,8 +158,23 @@ function AdminDashboard() {
 
       if (response.data.success) {
         window.showSuccessToast('User rejected');
-        await loadPendingUsers();
-        await loadAdminStats();
+        setPendingUsers((prev) => prev.filter((u) => u.id !== userId));
+        setAllUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId
+              ? { ...u, is_active: false, is_approved: false }
+              : u
+          )
+        );
+        setAdminStats((prev) =>
+          prev
+            ? {
+                ...prev,
+                pending_users: Math.max((prev.pending_users || 0) - 1, 0)
+              }
+            : prev
+        );
+        Promise.all([loadPendingUsers(), loadAdminStats(), loadAllUsers()]);
       }
     } catch (error) {
       console.error('Error rejecting user:', error);

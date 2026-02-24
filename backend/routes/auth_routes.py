@@ -8,13 +8,120 @@ from models import db, User
 from services.auth_service import AuthService
 from extensions import limiter
 from token_blocklist import revoke_token
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from config import SECRET_KEY
 
 from utils.validators import validate_required_fields, validate_email, validate_password_strength
 import os
 import threading
+import secrets
+
+try:
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+    GOOGLE_AUTH_IMPORT_ERROR = None
+except Exception as exc:
+    google_id_token = None
+    google_requests = None
+    GOOGLE_AUTH_IMPORT_ERROR = str(exc)
 
 # Create blueprint
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
+PENDING_APPROVAL_TOKEN_SALT = "pending-approval-v1"
+PENDING_APPROVAL_TOKEN_MAX_AGE_SECONDS = 7 * 24 * 60 * 60  # 7 days
+
+
+def _pending_serializer():
+    return URLSafeTimedSerializer(SECRET_KEY, salt=PENDING_APPROVAL_TOKEN_SALT)
+
+
+def _issue_pending_token(user):
+    return _pending_serializer().dumps({
+        "user_id": int(user.id),
+        "email": (user.email or "").strip().lower()
+    })
+
+
+def _verify_pending_token(token):
+    return _pending_serializer().loads(token, max_age=PENDING_APPROVAL_TOKEN_MAX_AGE_SECONDS)
+
+
+def _issue_auth_response(user, success_message='Login successful'):
+    """Return the same auth response shapes used by password login."""
+    if user.is_account_locked():
+        return jsonify({
+            'success': False,
+            'status': 'account_locked',
+            'message': "Account is temporarily locked due to too many failed login attempts"
+        }), 423
+
+    if not user.is_active:
+        return jsonify({
+            'success': False,
+            'status': 'account_deactivated',
+            'message': "Account is deactivated. Please contact administrator."
+        }), 403
+
+    if not user.is_verified:
+        return jsonify({
+            'success': False,
+            'status': 'not_verified',
+            'message': "Please verify your email address before logging in"
+        }), 401
+
+    if not user.is_approved:
+        user.record_login()
+        db.session.add(user)
+        db.session.commit()
+        pending_token = _issue_pending_token(user)
+        return jsonify({
+            'success': True,
+            'status': 'pending_approval',
+            'message': "Your account is pending approval by administrator",
+            'pending_token': pending_token,
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'role': user.role,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_verified': user.is_verified,
+                'is_approved': user.is_approved,
+                'created_at': user.created_at.isoformat()
+            }
+        }), 200
+
+    user.record_login()
+    db.session.add(user)
+    db.session.commit()
+    tokens = AuthService.generate_tokens(user)
+    return jsonify({
+        'success': True,
+        'status': 'success',
+        'message': success_message,
+        'access_token': tokens['access_token'],
+        'refresh_token': tokens['refresh_token'],
+        'token_type': tokens['token_type'],
+        'expires_in': tokens['expires_in'],
+        'user': user.to_dict()
+    }), 200
+
+
+def _notify_admin_for_authority_signup(user):
+    """Notify admin when a new authority user signs up via Google."""
+    try:
+        approval_token = user.generate_approval_token()
+        user.save()
+        base_url = os.getenv('BACKEND_BASE_URL', request.url_root.rstrip('/'))
+        direct_approve_url = f"{base_url}/api/admin/direct-approve/{approval_token}"
+        from services.email_service import email_service
+        admin_success, admin_message = email_service.send_admin_new_user_notification(
+            user,
+            direct_approve_url=direct_approve_url
+        )
+        return admin_success, admin_message
+    except Exception as exc:
+        return False, f"Admin notification failed: {exc}"
 
 
 def _send_signup_emails_async(app, user_id):
@@ -210,10 +317,12 @@ def login():
             
         elif status == 'pending_approval':
             # User is verified but not approved - don't generate tokens
+            pending_token = _issue_pending_token(user)
             return jsonify({
                 'success': True,
                 'status': 'pending_approval',
                 'message': message,
+                'pending_token': pending_token,
                 'user': {
                     'id': user.id,
                     'email': user.email,
@@ -266,6 +375,146 @@ def login():
         return jsonify({
             'success': False,
             'message': f'Login failed: {str(e)}'
+        }), 500
+
+
+@auth_bp.route('/google', methods=['POST'])
+@limiter.limit("20 per minute")
+def google_auth():
+    """
+    Authenticate or register a user via Google ID token.
+    POST /api/auth/google
+    """
+    try:
+        if google_id_token is None or google_requests is None:
+            return jsonify({
+                'success': False,
+                'message': f'Google auth dependency missing on server: {GOOGLE_AUTH_IMPORT_ERROR or "unknown import error"}'
+            }), 500
+
+        data = request.get_json() or {}
+        id_token_value = (data.get('id_token') or '').strip()
+        mode = (data.get('mode') or 'login').strip().lower()
+        role = (data.get('role') or 'authority').strip().lower()
+
+        if mode not in {'login', 'signup'}:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid mode. Must be login or signup.'
+            }), 400
+
+        if not id_token_value:
+            return jsonify({
+                'success': False,
+                'message': 'Google id_token is required'
+            }), 400
+
+        google_client_id = (os.getenv('GOOGLE_CLIENT_ID') or '').strip()
+        if not google_client_id:
+            return jsonify({
+                'success': False,
+                'message': 'Google OAuth is not configured'
+            }), 500
+
+        token_info = google_id_token.verify_oauth2_token(
+            id_token_value,
+            google_requests.Request(),
+            google_client_id
+        )
+
+        issuer = token_info.get('iss')
+        if issuer not in {'accounts.google.com', 'https://accounts.google.com'}:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid token issuer'
+            }), 401
+
+        if not token_info.get('email_verified'):
+            return jsonify({
+                'success': False,
+                'message': 'Google account email is not verified'
+            }), 401
+
+        email = (token_info.get('email') or '').strip().lower()
+        if not email:
+            return jsonify({
+                'success': False,
+                'message': 'Google account email not found'
+            }), 400
+
+        user = User.find_by_email(email)
+
+        if mode == 'login':
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'status': 'account_not_found',
+                    'message': 'Account not found. Please sign up first.'
+                }), 404
+
+            if not user.is_verified:
+                user.is_verified = True
+                user.verification_token = None
+                user.verification_expires_at = None
+                db.session.add(user)
+                db.session.commit()
+
+            return _issue_auth_response(user, success_message='Login successful')
+
+        # signup mode
+        if role not in ['admin', 'authority', 'reporter', 'unit']:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid role. Must be admin, authority, reporter, or unit'
+            }), 400
+
+        if user:
+            return jsonify({
+                'success': False,
+                'status': 'account_exists',
+                'message': 'User with this email already exists. Please login with Google.'
+            }), 409
+
+        first_name = (data.get('first_name') or token_info.get('given_name') or '').strip()
+        last_name = (data.get('last_name') or token_info.get('family_name') or '').strip()
+        phone = (data.get('phone') or '').strip()
+        organization = (data.get('organization') or '').strip()
+
+        random_password = f"{secrets.token_urlsafe(24)}Aa1!"
+        user = User(
+            email=email,
+            password=random_password,
+            role=role,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            organization=organization
+        )
+        user.is_verified = True
+        user.verification_token = None
+        user.verification_expires_at = None
+        user.save()
+
+        admin_notified = False
+        admin_notification_message = 'Admin notification not required for this role.'
+        if user.role == 'authority':
+            admin_notified, admin_notification_message = _notify_admin_for_authority_signup(user)
+
+        response, status_code = _issue_auth_response(user, success_message='Signup successful')
+        payload = response.get_json() or {}
+        payload['admin_notified'] = admin_notified
+        payload['admin_notification_message'] = admin_notification_message
+        return jsonify(payload), status_code
+
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'message': 'Invalid Google token'
+        }), 401
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Google authentication failed: {str(e)}'
         }), 500
 
 @auth_bp.route('/logout', methods=['POST'])
@@ -835,6 +1084,23 @@ def check_approval_status():
             }), 400
         
         email = data['email'].strip().lower()
+        pending_token = data.get('pending_token')
+        pending_payload = None
+
+        # Legacy fallback: allow status check by email when pending token is unavailable.
+        if pending_token:
+            try:
+                pending_payload = _verify_pending_token(pending_token)
+            except SignatureExpired:
+                return jsonify({
+                    'success': False,
+                    'message': 'Pending approval session expired. Please log in again.'
+                }), 401
+            except BadSignature:
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid pending approval session. Please log in again.'
+                }), 401
         
         # Find user by email
         user = User.query.filter_by(email=email).first()
@@ -844,12 +1110,66 @@ def check_approval_status():
                 'success': False,
                 'message': 'User not found'
             }), 404
+
+        if pending_payload and (
+            str(pending_payload.get('user_id')) != str(user.id) or
+            (pending_payload.get('email') or '').strip().lower() != email
+        ):
+            return jsonify({
+                'success': False,
+                'message': 'Pending approval session does not match this user.'
+            }), 401
+
+        is_rejected = not user.is_active
+
+        if is_rejected:
+            rejection_message = 'Your registration request has been rejected by administrator.'
+            if user.is_approved:
+                rejection_message = 'Your account has been deactivated by administrator.'
+            return jsonify({
+                'success': True,
+                'approved': False,
+                'verified': user.is_verified,
+                'rejected': True,
+                'message': rejection_message,
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'role': user.role,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'is_verified': user.is_verified,
+                    'is_approved': user.is_approved,
+                    'is_active': user.is_active,
+                    'created_at': user.created_at.isoformat()
+                }
+            }), 200
+
+        if user.is_approved and user.is_verified and user.is_active:
+            tokens = AuthService.generate_tokens(user)
+            user.record_login()
+            db.session.add(user)
+            db.session.commit()
+            return jsonify({
+                'success': True,
+                'approved': True,
+                'verified': True,
+                'rejected': False,
+                'status': 'success',
+                'message': 'Your account has been approved',
+                'access_token': tokens['access_token'],
+                'refresh_token': tokens['refresh_token'],
+                'token_type': tokens['token_type'],
+                'expires_in': tokens['expires_in'],
+                'user': user.to_dict()
+            }), 200
         
         # Return user status
         return jsonify({
             'success': True,
             'approved': user.is_approved,
             'verified': user.is_verified,
+            'rejected': False,
             'user': {
                 'id': user.id,
                 'email': user.email,
@@ -858,6 +1178,7 @@ def check_approval_status():
                 'last_name': user.last_name,
                 'is_verified': user.is_verified,
                 'is_approved': user.is_approved,
+                'is_active': user.is_active,
                 'created_at': user.created_at.isoformat()
             }
         }), 200
@@ -866,6 +1187,69 @@ def check_approval_status():
         return jsonify({
             'success': False,
             'message': f'Status check failed: {str(e)}'
+        }), 500
+
+
+@auth_bp.route('/request-approval-again', methods=['POST'])
+def request_approval_again():
+    """
+    Re-activate a previously rejected user so they can be reviewed again.
+    POST /api/auth/request-approval-again
+    """
+    try:
+        data = request.get_json() or {}
+        email = (data.get('email') or '').strip().lower()
+
+        if not email:
+            return jsonify({
+                'success': False,
+                'message': 'Email is required'
+            }), 400
+
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({
+                'success': False,
+                'message': 'User not found'
+            }), 404
+
+        if user.is_approved and user.is_active:
+            return jsonify({
+                'success': False,
+                'message': 'Account is already approved and active.'
+            }), 400
+
+        if not user.is_verified:
+            return jsonify({
+                'success': False,
+                'message': 'Please verify your email before requesting approval again.'
+            }), 400
+
+        if user.is_approved and not user.is_active:
+            return jsonify({
+                'success': False,
+                'message': 'This account was deactivated. Please contact administrator.'
+            }), 400
+
+        user.is_active = True
+        db.session.add(user)
+        db.session.commit()
+
+        admin_notified = False
+        admin_notification_message = 'Admin notification not required for this role.'
+        if user.role == 'authority':
+            admin_notified, admin_notification_message = _notify_admin_for_authority_signup(user)
+
+        return jsonify({
+            'success': True,
+            'message': 'Request submitted again. Please wait for admin approval.',
+            'admin_notified': admin_notified,
+            'admin_notification_message': admin_notification_message
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Request failed: {str(e)}'
         }), 500
 
 @auth_bp.route('/status', methods=['GET'])

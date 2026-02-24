@@ -1,0 +1,84 @@
+.pending-approval-page {
+  min-height: calc(100vh - 140px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(37, 99, 235, 0.12), transparent 42%),
+    radial-gradient(circle at 82% 82%, rgba(14, 165, 233, 0.1), transparent 40%),
+    #f1f5f9;
+}
+
+.pending-approval-card {
+  width: min(560px, 100%);
+}
+
+.pending-approval-status-title {
+  margin-bottom: 6px;
+}
+
+.pending-approval-info-grid {
+  display: grid;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: #334155;
+}
+
+.pending-approval-status-chip-wrap {
+  margin-top: 10px;
+}
+
+.pending-approval-status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+}
+
+.pending-approval-status-chip.pending {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.pending-approval-status-chip.checking {
+  color: #0c4a6e;
+  background: #f0f9ff;
+  border-color: #7dd3fc;
+}
+
+.pending-approval-status-chip.rejected {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.pending-approval-status-chip.approved {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.pending-approval-status-chip.relogin {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.pending-approval-actions {
+  margin-top: 12px;
+}
+
+.pending-approval-support-btn {
+  margin-top: 10px;
+}
+
+.pending-approval-footer-note {
+  margin-top: 10px;
+  text-align: center;
+}

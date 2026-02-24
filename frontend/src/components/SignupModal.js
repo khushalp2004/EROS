@@ -1,8 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { authAPI } from '../api';
+import { useAuth } from '../hooks/useAuth';
+import { loadGoogleIdentityScript, renderGoogleSignInButton } from '../utils/googleIdentity';
 import '../styles/signup-modal.css';
 
-export default function SignupModal({ isOpen, onClose }) {
+export default function SignupModal({ isOpen, onClose, onSwitchToLogin }) {
+  const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -23,6 +28,11 @@ export default function SignupModal({ isOpen, onClose }) {
   const [resendMessage, setResendMessage] = useState('');
   const [canResend, setCanResend] = useState(true);
   const [resendCountdown, setResendCountdown] = useState(0);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleIdToken, setGoogleIdToken] = useState('');
+  const [googleProfileLocked, setGoogleProfileLocked] = useState(false);
+  const googleButtonRef = useRef(null);
+  const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
   // Countdown timer for resend button
   useEffect(() => {
@@ -52,8 +62,66 @@ export default function SignupModal({ isOpen, onClose }) {
       setResendCountdown(0);
       setLoading(false);
       setResendLoading(false);
+      setGoogleIdToken('');
+      setGoogleProfileLocked(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || verificationPending || googleIdToken || !googleButtonRef.current || !googleClientId) return;
+
+    let isMounted = true;
+    loadGoogleIdentityScript()
+      .then(() => {
+        if (!isMounted || !googleButtonRef.current) return;
+        renderGoogleSignInButton({
+          container: googleButtonRef.current,
+          clientId: googleClientId,
+          width: 420,
+          text: 'signup_with',
+          callback: async (googleResponse) => {
+            if (!googleResponse?.credential) {
+              setError('Google signup failed. Please try again.');
+              return;
+            }
+
+            try {
+              setGoogleLoading(true);
+              setError('');
+              const credential = googleResponse.credential;
+              const tokenPayloadRaw = credential.split('.')[1] || '';
+              const tokenPayload = tokenPayloadRaw
+                ? JSON.parse(atob(tokenPayloadRaw.replace(/-/g, '+').replace(/_/g, '/')))
+                : {};
+
+              setGoogleIdToken(credential);
+              setGoogleProfileLocked(true);
+              setFormData((prev) => ({
+                ...prev,
+                email: prev.email || tokenPayload.email || '',
+                firstName: prev.firstName || tokenPayload.given_name || '',
+                lastName: prev.lastName || tokenPayload.family_name || ''
+              }));
+              if (window.showInfoToast) {
+                window.showInfoToast('Google verified. Complete remaining details and submit signup.');
+              }
+            } catch (err) {
+              setError('Google verification failed. Please try again.');
+            } finally {
+              setGoogleLoading(false);
+            }
+          }
+        });
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setError('Failed to load Google sign-in. Please refresh and try again.');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, verificationPending, googleIdToken, googleClientId]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -69,37 +137,66 @@ export default function SignupModal({ isOpen, onClose }) {
     setError('');
     setSuccess(false);
 
-    // Validate passwords match
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
-
-    // Validate password length
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters long');
-      setLoading(false);
-      return;
-    }
-
     try {
-      const response = await authAPI.register({
-        email: formData.email,
-        password: formData.password,
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        phone: formData.phone,
-        organization: formData.organization,
-        role: formData.role
-      });
+      let response;
+      if (googleIdToken) {
+        response = await authAPI.googleAuth({
+          mode: 'signup',
+          id_token: googleIdToken,
+          role: formData.role,
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          phone: formData.phone,
+          organization: formData.organization
+        });
+      } else {
+        // Validate passwords match
+        if (formData.password !== formData.confirmPassword) {
+          setError('Passwords do not match');
+          setLoading(false);
+          return;
+        }
+
+        // Validate password length
+        if (formData.password.length < 8) {
+          setError('Password must be at least 8 characters long');
+          setLoading(false);
+          return;
+        }
+
+        response = await authAPI.register({
+          email: formData.email,
+          password: formData.password,
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          phone: formData.phone,
+          organization: formData.organization,
+          role: formData.role
+        });
+      }
 
       if (response.data && response.data.success) {
-        // Signup successful - show verification pending state
-        setSuccess(true);
-        setVerificationPending(true);
-        setError('');
-        // Don't auto-close - keep popup open for verification
+        if (googleIdToken) {
+          const { status, user, access_token, pending_token } = response.data || {};
+          if (status === 'success') {
+            login(user, access_token, 'success');
+            if (window.showSuccessToast) window.showSuccessToast('Signup successful!');
+            onClose();
+            if (user.role === 'admin') navigate('/admin');
+            else if (user.role === 'authority') navigate('/dashboard');
+            else if (user.role === 'unit') navigate('/unit');
+          } else if (status === 'pending_approval') {
+            login({ ...user, pending_token }, null, 'pending_approval');
+            onClose();
+            window.location.href = '/pending-approval';
+          }
+        } else {
+          // Signup successful - show verification pending state
+          setSuccess(true);
+          setVerificationPending(true);
+          setError('');
+          // Don't auto-close - keep popup open for verification
+        }
       } else {
         // Signup failed
         setError(response.data?.message || 'Signup failed. Please try again.');
@@ -161,6 +258,12 @@ export default function SignupModal({ isOpen, onClose }) {
     onClose();
   };
 
+  const handleSwitchToLogin = () => {
+    if (!onSwitchToLogin) return;
+    onClose();
+    onSwitchToLogin();
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -169,10 +272,10 @@ export default function SignupModal({ isOpen, onClose }) {
         <div className="signup-modal-head">
           <h2 id="signup-modal-title" className="signup-modal-title">
             <span className="signup-modal-title-icon" aria-hidden="true">👤</span>
-            Admin Signup
+            Create Account
           </h2>
           <p className="signup-modal-subtitle">
-            Create an admin account to access the authority dashboard.
+            Register your EROS account with your official details.
           </p>
         </div>
 
@@ -239,6 +342,12 @@ export default function SignupModal({ isOpen, onClose }) {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="signup-modal-form">
+            {googleIdToken && (
+              <div className="signup-modal-google-verified-banner" role="status">
+                <strong>Google verified:</strong> {formData.email}. Complete remaining details and submit.
+              </div>
+            )}
+
             <div className="signup-modal-grid two">
               <div className="signup-modal-field">
                 <label className="signup-modal-label">
@@ -282,11 +391,13 @@ export default function SignupModal({ isOpen, onClose }) {
                 onChange={handleInputChange}
                 placeholder="Enter your email"
                 className="signup-modal-input"
+                readOnly={googleProfileLocked}
                 required
               />
             </div>
 
-            <div className="signup-modal-grid two">
+            {!googleIdToken && (
+              <div className="signup-modal-grid two">
               <div className="signup-modal-field">
                 <label className="signup-modal-label">
                   Password *
@@ -339,6 +450,7 @@ export default function SignupModal({ isOpen, onClose }) {
                 </div>
               </div>
             </div>
+            )}
 
             <div className="signup-modal-grid two">
               <div className="signup-modal-field">
@@ -392,6 +504,25 @@ export default function SignupModal({ isOpen, onClose }) {
               </select>
             </div>
 
+            {!googleIdToken && (
+              <>
+                <div className="signup-modal-divider signup-modal-divider-google">
+                  <span>Or</span>
+                </div>
+
+                <div className="signup-modal-google-wrap">
+                  {googleClientId ? (
+                    <div ref={googleButtonRef} className="signup-modal-google-slot" />
+                  ) : (
+                    <div className="signup-modal-alert info">Google signup is not configured.</div>
+                  )}
+                  {googleLoading && (
+                    <div className="signup-modal-google-loading">Signing up with Google...</div>
+                  )}
+                </div>
+              </>
+            )}
+
             {error && (
               <div className="signup-modal-alert error" role="alert">
                 {error}
@@ -411,9 +542,22 @@ export default function SignupModal({ isOpen, onClose }) {
                 disabled={loading}
                 className="signup-modal-btn primary"
               >
-                {loading ? 'Creating Account...' : 'Create Account'}
+                {loading ? 'Creating Account...' : googleIdToken ? 'Complete Signup' : 'Create Account'}
               </button>
             </div>
+
+            {onSwitchToLogin && (
+              <div className="signup-modal-switch-row">
+                <span className="signup-modal-switch-text">Already have an account?</span>
+                <button
+                  type="button"
+                  onClick={handleSwitchToLogin}
+                  className="signup-modal-switch-link"
+                >
+                  Log in
+                </button>
+              </div>
+            )}
           </form>
         )}
       </div>

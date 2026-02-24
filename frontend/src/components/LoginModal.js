@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { authAPI } from '../api';
 import ForgotPasswordModal from './ForgotPasswordModal';
+import { loadGoogleIdentityScript, renderGoogleSignInButton } from '../utils/googleIdentity';
 import '../styles/login-modal.css';
 
-export default function LoginModal({ isOpen, onClose }) {
+export default function LoginModal({ isOpen, onClose, onSwitchToSignup }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -16,7 +17,10 @@ export default function LoginModal({ isOpen, onClose }) {
   const [success, setSuccess] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const { login } = useAuth();
+  const googleButtonRef = useRef(null);
+  const googleClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
   // Check for verification success message
   useEffect(() => {
@@ -41,6 +45,64 @@ export default function LoginModal({ isOpen, onClose }) {
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || !googleButtonRef.current || !googleClientId) return;
+
+    let isMounted = true;
+    loadGoogleIdentityScript()
+      .then(() => {
+        if (!isMounted || !googleButtonRef.current) return;
+        renderGoogleSignInButton({
+          container: googleButtonRef.current,
+          clientId: googleClientId,
+          width: 360,
+          text: 'continue_with',
+          callback: async (googleResponse) => {
+            if (!googleResponse?.credential) {
+              setError('Google sign-in failed. Please try again.');
+              return;
+            }
+
+            try {
+              setGoogleLoading(true);
+              setError('');
+              const response = await authAPI.googleAuth({
+                mode: 'login',
+                id_token: googleResponse.credential
+              });
+
+              const { status, user, access_token, pending_token } = response.data || {};
+              if (status === 'success') {
+                login(user, access_token, 'success');
+                if (window.showSuccessToast) window.showSuccessToast('Login successful!');
+                onClose();
+                if (user.role === 'admin') navigate('/admin');
+                else if (user.role === 'authority') navigate('/dashboard');
+                else if (user.role === 'unit') navigate('/unit');
+              } else if (status === 'pending_approval') {
+                login({ ...user, pending_token }, null, 'pending_approval');
+                onClose();
+                window.location.href = '/pending-approval';
+              }
+            } catch (err) {
+              const responseMessage = err?.response?.data?.message;
+              setError(responseMessage || 'Google login failed. Please try again.');
+            } finally {
+              setGoogleLoading(false);
+            }
+          }
+        });
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setError('Failed to load Google sign-in. Please refresh and try again.');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, googleClientId, login, navigate, onClose]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -53,7 +115,7 @@ export default function LoginModal({ isOpen, onClose }) {
       });
 
       if (response.data && response.data.success) {
-        const { status, user, access_token } = response.data;
+        const { status, user, access_token, pending_token } = response.data;
         
         if (status === 'success') {
           // Full login successful
@@ -90,7 +152,7 @@ export default function LoginModal({ isOpen, onClose }) {
           
         } else if (status === 'pending_approval') {
           // User is verified but not approved - set as pending approval
-          login(user, null, 'pending_approval');
+          login({ ...user, pending_token }, null, 'pending_approval');
           onClose();
           
           // Reset form
@@ -151,6 +213,12 @@ export default function LoginModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
+  const handleSwitchToSignup = () => {
+    if (!onSwitchToSignup) return;
+    onClose();
+    onSwitchToSignup();
+  };
+
   if (showForgotPassword) {
     return (
       <ForgotPasswordModal 
@@ -171,10 +239,10 @@ export default function LoginModal({ isOpen, onClose }) {
         <div className="login-modal-head">
           <h2 id="login-modal-title" className="login-modal-title">
             <span className="login-modal-title-icon" aria-hidden="true">🔐</span>
-            Admin Login
+            Login
           </h2>
           <p className="login-modal-subtitle">
-            Please enter your credentials to access the authority dashboard
+            Enter your credentials to access your EROS workspace.
           </p>
         </div>
 
@@ -229,6 +297,21 @@ export default function LoginModal({ isOpen, onClose }) {
             </div>
           </div>
 
+          <div className="login-modal-divider login-modal-divider-google">
+            <span>Or</span>
+          </div>
+
+          <div className="login-modal-google-wrap">
+            {googleClientId ? (
+              <div ref={googleButtonRef} className="login-modal-google-slot" />
+            ) : (
+              <div className="login-modal-alert info">Google login is not configured.</div>
+            )}
+            {googleLoading && (
+              <div className="login-modal-google-loading">Signing in with Google...</div>
+            )}
+          </div>
+
           {success && (
             <div className="login-modal-alert success" role="status">
               {success}
@@ -264,6 +347,19 @@ export default function LoginModal({ isOpen, onClose }) {
               {loading ? 'Logging in...' : redirecting ? 'Redirecting...' : 'Login'}
             </button>
           </div>
+
+          {onSwitchToSignup && (
+            <div className="login-modal-switch-row">
+              <span className="login-modal-switch-text">New here?</span>
+              <button
+                type="button"
+                onClick={handleSwitchToSignup}
+                className="login-modal-switch-link"
+              >
+                Create an account
+              </button>
+            </div>
+          )}
         </form>
       </div>
       

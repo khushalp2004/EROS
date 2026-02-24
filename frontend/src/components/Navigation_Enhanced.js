@@ -504,11 +504,19 @@ export default function Navigation() {
       <LoginModal
         isOpen={loginModalOpen}
         onClose={() => setLoginModalOpen(false)}
+        onSwitchToSignup={() => {
+          setLoginModalOpen(false);
+          setSignupModalOpen(true);
+        }}
       />
 
       <SignupModal
         isOpen={signupModalOpen}
         onClose={() => setSignupModalOpen(false)}
+        onSwitchToLogin={() => {
+          setSignupModalOpen(false);
+          setLoginModalOpen(true);
+        }}
       />
 
       {/* Enhanced CSS Animations */}

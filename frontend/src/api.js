@@ -143,6 +143,7 @@ export const authAPI = {
   
   // Login user
   login: (credentials) => api.post('/api/auth/login', credentials),
+  googleAuth: (payload) => api.post('/api/auth/google', payload),
   
   // Logout user
   logout: () => api.post('/api/auth/logout'),
@@ -162,6 +163,14 @@ export const authAPI = {
   // Reset password
   resetPassword: (token, data) => 
     api.post('/api/auth/reset-password', { token, ...data }),
+
+  // Pending approval polling
+  checkApprovalStatus: (email, pendingToken) => {
+    const payload = { email };
+    if (pendingToken) payload.pending_token = pendingToken;
+    return api.post('/api/auth/check-approval-status', payload);
+  },
+  requestApprovalAgain: (email) => api.post('/api/auth/request-approval-again', { email }),
   
   // Health check
   health: () => api.get('/api/auth/health'),

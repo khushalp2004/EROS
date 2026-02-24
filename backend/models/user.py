@@ -256,7 +256,7 @@ class User(db.Model):
     @staticmethod
     def get_pending_users():
         """Get all users pending approval"""
-        return User.query.filter_by(is_approved=False).order_by(User.created_at.desc()).all()
+        return User.query.filter_by(is_approved=False, is_active=True).order_by(User.created_at.desc()).all()
     
     @staticmethod
     def get_unverified_users():

@@ -256,7 +256,7 @@ def get_all_users():
             elif status == 'inactive':
                 query = query.filter_by(is_active=False)
             elif status == 'pending':
-                query = query.filter_by(is_approved=False)
+                query = query.filter_by(is_approved=False, is_active=True)
             elif status == 'locked':
                 from datetime import datetime
                 query = query.filter(User.locked_until > datetime.utcnow())
@@ -506,6 +506,7 @@ def reject_user(user_id):
         reason = data.get('reason', 'Registration rejected by administrator')
         
         # Deactivate user
+        user.is_approved = False
         user.deactivate_user()
         user.save()
         
@@ -881,7 +882,7 @@ def get_admin_stats():
         active_users = User.query.filter_by(is_active=True).count()
         
         # Pending users
-        pending_users = User.query.filter_by(is_approved=False).count()
+        pending_users = User.query.filter_by(is_approved=False, is_active=True).count()
         
         # Locked users
         locked_users = User.query.filter(User.locked_until > datetime.utcnow()).count()

@@ -13,7 +13,9 @@
 }
 
 .login-modal-card {
-  width: min(440px, 100%);
+  width: min(460px, 100%);
+  max-height: min(92vh, 760px);
+  overflow-y: auto;
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.3);
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
@@ -22,12 +24,12 @@
 }
 
 .login-modal-head {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .login-modal-title {
-  margin: 0 0 6px;
-  font-size: 1.15rem;
+  margin: 0 0 8px;
+  font-size: 1.24rem;
   font-weight: 800;
   color: #0f172a;
   display: flex;
@@ -50,31 +52,87 @@
 .login-modal-subtitle {
   margin: 0;
   color: #64748b;
-  font-size: 0.84rem;
-  line-height: 1.45;
+  font-size: 0.86rem;
+  line-height: 1.5;
 }
 
 .login-modal-form {
   display: grid;
-  gap: 14px;
+  gap: 16px;
+}
+
+.login-modal-google-wrap {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 2px 0 0;
+}
+
+.login-modal-google-loading {
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.login-modal-google-slot {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  min-height: 40px;
+}
+
+.login-modal-google-slot > div {
+  border-radius: 11px;
+  overflow: hidden;
+}
+
+.login-modal-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 2px 0;
+}
+
+.login-modal-divider::before,
+.login-modal-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid #e2e8f0;
+}
+
+.login-modal-divider span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+
+.login-modal-divider-google {
+  margin-top: 2px;
+  margin-bottom: -2px;
 }
 
 .login-modal-field {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 
 .login-modal-label {
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: #334155;
 }
 
 .login-modal-input {
   width: 100%;
-  height: 42px;
+  height: 46px;
   border-radius: 11px;
   border: 1px solid #cbd5e1;
   background: linear-gradient(180deg, #ffffff, #f8fafc);
@@ -115,8 +173,8 @@
   top: 50%;
   right: 8px;
   transform: translateY(-50%);
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid #dbe4ef;
+  background: #f8fafc;
   color: #64748b;
   border-radius: 8px;
   height: 28px;
@@ -128,7 +186,8 @@
 
 .login-modal-showpass-btn:hover {
   color: #1e293b;
-  background: #f1f5f9;
+  background: #eef2f7;
+  border-color: #cbd5e1;
 }
 
 .login-modal-forgot-row {
@@ -153,9 +212,9 @@
 
 .login-modal-alert {
   border-radius: 10px;
-  padding: 10px 11px;
-  font-size: 0.8rem;
-  line-height: 1.4;
+  padding: 11px 12px;
+  font-size: 0.82rem;
+  line-height: 1.45;
   border: 1px solid transparent;
 }
 
@@ -201,13 +260,13 @@
 .login-modal-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 .login-modal-btn {
-  min-height: 40px;
+  min-height: 44px;
   border-radius: 11px;
-  font-size: 0.84rem;
+  font-size: 0.86rem;
   font-weight: 700;
   cursor: pointer;
   transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease, background-color 150ms ease;
@@ -243,9 +302,42 @@
   box-shadow: none !important;
 }
 
+.login-modal-switch-row {
+  margin-top: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+.login-modal-switch-text {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.login-modal-switch-link {
+  border: none;
+  background: transparent;
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 0;
+}
+
+.login-modal-switch-link:hover {
+  color: #1e40af;
+}
+
 @media (max-width: 480px) {
   .login-modal-card {
     padding: 16px;
+  }
+
+  .login-modal-title {
+    font-size: 1.12rem;
   }
 
   .login-modal-actions {
